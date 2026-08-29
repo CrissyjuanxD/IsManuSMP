@@ -1,16 +1,19 @@
 package Casino;
 
 import org.bukkit.ChatColor;
-import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.util.StringUtil;
 
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
-public class CasinoCommands implements CommandExecutor {
+public class CasinoCommands implements CommandExecutor, TabCompleter {
     private final CasinoManager manager;
 
     public CasinoCommands(CasinoManager manager) {
@@ -23,7 +26,6 @@ public class CasinoCommands implements CommandExecutor {
 
         if (args.length == 0) return false;
 
-        // /casino set <type>
         if (args[0].equalsIgnoreCase("set")) {
             if (!(sender instanceof Player player)) return true;
             if (args.length < 2) {
@@ -48,7 +50,6 @@ public class CasinoCommands implements CommandExecutor {
             return true;
         }
 
-        // /casino remove
         if (args[0].equalsIgnoreCase("remove")) {
             if (!(sender instanceof Player player)) return true;
 
@@ -62,7 +63,6 @@ public class CasinoCommands implements CommandExecutor {
             return true;
         }
 
-        // /casino reload
         if (args[0].equalsIgnoreCase("reload")) {
             manager.reload();
             sender.sendMessage(ChatColor.GREEN + "Casino recargado.");
@@ -70,5 +70,21 @@ public class CasinoCommands implements CommandExecutor {
         }
 
         return false;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        List<String> completions = new ArrayList<>();
+        if (!sender.hasPermission("ismanu.admin")) return completions;
+
+        if (args.length == 1) {
+            completions.addAll(Arrays.asList("set", "remove", "reload"));
+            return StringUtil.copyPartialMatches(args[0], completions, new ArrayList<>());
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("set")) {
+            completions.addAll(Arrays.asList("blackjack", "slot"));
+            return StringUtil.copyPartialMatches(args[1], completions, new ArrayList<>());
+        }
+
+        return completions;
     }
 }

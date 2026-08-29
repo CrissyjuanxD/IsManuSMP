@@ -1,13 +1,7 @@
 package Commands;
 
-import Dificultades.CustomMobs.CustomBoat;
-import Dificultades.DayOneChanges;
-import Habilidades.HabilidadesBook;
+import Managers.ItemManager;
 import imp.crissyjuanxd.IsManuSMP;
-import items.CorruptedGoldenApple;
-import items.DoubleLifeTotem;
-import items.EconomyItems;
-import items.Misionesitem;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -23,21 +17,19 @@ import java.util.stream.Collectors;
 public class ItemsCommands implements CommandExecutor, TabCompleter {
 
     private final IsManuSMP plugin;
-    private final DoubleLifeTotem doubleLifeTotem;
-    private final CustomBoat customBoat;
+    private final ItemManager itemManager;
 
-    public ItemsCommands(IsManuSMP plugin) {
+    public ItemsCommands(IsManuSMP plugin, ItemManager itemManager) {
         this.plugin = plugin;
-        this.doubleLifeTotem = new DoubleLifeTotem(plugin);
-        this.customBoat = new CustomBoat(plugin);
-        plugin.getCommand("givevct").setExecutor(this);
-        plugin.getCommand("givevct").setTabCompleter(this);
+        this.itemManager = itemManager;
+        plugin.getCommand("giveismanu").setExecutor(this);
+        plugin.getCommand("giveismanu").setTabCompleter(this);
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0) {
-            sender.sendMessage("§cUso: /givevct <item> [cantidad] [jugador]");
+            sender.sendMessage("§cUso: /giveismanu <item> [cantidad] [jugador]");
             return true;
         }
 
@@ -78,122 +70,41 @@ public class ItemsCommands implements CommandExecutor, TabCompleter {
             }
         }
 
-        ItemStack item;
-        switch (itemName) {
-            case "doubletotem":
-                item = doubleLifeTotem.createDoubleLifeTotem();
-                item.setAmount(cantidad);
-                break;
-            case "corrupted_steak":
-                item = DayOneChanges.corruptedSteak();
-                item.setAmount(cantidad);
-                break;
-            case "customboat":
-                item = customBoat.createBoatItem(target);
-                item.setAmount(cantidad);
-                break;
-            case "fuel":
-                item = customBoat.createFuelItem();
-                item.setAmount(cantidad);
-                break;
-            case "corrupted_golden_apple":
-                item = CorruptedGoldenApple.createCorruptedGoldenApple();
-                item.setAmount(cantidad);
-                break;
-            case "libro_habilidades":
-                item = HabilidadesBook.createHabilidadesBook();
-                item.setAmount(cantidad);
-                break;
-            case "manucoins":
-                item = EconomyItems.createVithiumCoin();
-                item.setAmount(cantidad);
-                break;
-            case "manu_fichas":
-                item = EconomyItems.createVithiumToken();
-                item.setAmount(cantidad);
-                break;
-            case "mochila_nivel_1":
-                item = EconomyItems.createNormalMochila();
-                item.setAmount(cantidad);
-                break;
-            case "mochila_nivel_2":
-                item = EconomyItems.createGreenMochila();
-                item.setAmount(cantidad);
-                break;
-            case "mochila_nivel_3":
-                item = EconomyItems.createRedMochila();
-                item.setAmount(cantidad);
-                break;
-            case "mochila_nivel_4":
-                item = EconomyItems.createBlueMochila();
-                item.setAmount(cantidad);
-                break;
-            case "mochila_nivel_5":
-                item = EconomyItems.createPurpleMochila();
-                item.setAmount(cantidad);
-                break;
-            case "enderbag":
-                item = EconomyItems.createEnderBag();
-                item.setAmount(cantidad);
-                break;
-            case "gancho":
-                item = EconomyItems.createGancho();
-                item.setAmount(cantidad);
-                break;
-            case "panic_apple":
-                item = EconomyItems.createManzanaPanico();
-                item.setAmount(cantidad);
-                break;
-            case "artefacto_nivel_1":
-                item = EconomyItems.createYunqueReparadorNivel1();
-                item.setAmount(cantidad);
-                break;
-            case "artefacto_nivel_2":
-                item = EconomyItems.createYunqueReparadorNivel2();
-                item.setAmount(cantidad);
-                break;
-            case "misiones":
-                item = Misionesitem.createMisiones();
-                item.setAmount(cantidad);
-                break;
-            default:
-                sender.sendMessage("§cEse item no existe.");
-                return true;
+        ItemStack item = itemManager.getItem(itemName, cantidad, target);
+
+        if (item == null) {
+            sender.sendMessage("§cEse item no existe: " + itemName);
+            return true;
         }
 
         target.getInventory().addItem(item);
         sender.sendMessage("§aHas dado " + cantidad + "x " + itemName + " a " + target.getName() + ".");
+
         return true;
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        List<String> completions = new ArrayList<>();
-
         if (args.length == 1) {
-            completions.add("doubletotem");
-            completions.add("corrupted_steak");
-            completions.add("customboat");
-            completions.add("fuel");
-            completions.add("corrupted_golden_apple");
-            completions.add("libro_habilidades");
-            completions.add("manucoins");
-            completions.add("manu_fichas");
-            completions.add("mochila_nivel_1");
-            completions.add("mochila_nivel_2");
-            completions.add("mochila_nivel_3");
-            completions.add("mochila_nivel_4");
-            completions.add("mochila_nivel_5");
-            completions.add("enderbag");
-            completions.add("gancho");
-            completions.add("panic_apple");
-            completions.add("artefacto_nivel_1");
-            completions.add("artefacto_nivel_2");
-            completions.add("misiones");
+            return itemManager.getRegisteredItems().stream()
+                    .filter(name -> name.toLowerCase().startsWith(args[0].toLowerCase()))
+                    .collect(Collectors.toList());
+
         } else if (args.length == 2) {
+            List<String> completions = new ArrayList<>();
             for (Player player : Bukkit.getOnlinePlayers()) {
                 completions.add(player.getName());
             }
+            // Agregamos algunas sugerencias numéricas básicas para la cantidad si no escribe un jugador
+            completions.add("1");
+            completions.add("16");
+            completions.add("32");
+            completions.add("64");
+
+            return completions.stream()
+                    .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
+                    .collect(Collectors.toList());
+
         } else if (args.length == 3) {
             return Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName)
@@ -201,6 +112,6 @@ public class ItemsCommands implements CommandExecutor, TabCompleter {
                     .collect(Collectors.toList());
         }
 
-        return completions;
+        return new ArrayList<>();
     }
 }

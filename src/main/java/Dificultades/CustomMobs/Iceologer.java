@@ -2,6 +2,7 @@ package Dificultades.CustomMobs;
 
 import items.IceBow.IceBowItem;
 import items.IceBow.IceBowLogic;
+import items.ItemsTotems;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.data.BlockData;
@@ -66,7 +67,6 @@ public class Iceologer implements Listener {
     }
 
     public void apply() {
-        // Como es estático, solo registramos una vez para todo el servidor
         if (!eventsRegistered) {
             Bukkit.getPluginManager().registerEvents(this, plugin);
             Bukkit.getPluginManager().registerEvents(iceBowLogic, plugin);
@@ -107,7 +107,6 @@ public class Iceologer implements Listener {
     }
 
     private void startCentralTask() {
-        // Aseguramos que solo haya una tarea corriendo
         if (mainTask != null && !mainTask.isCancelled()) return;
 
         mainTask = new BukkitRunnable() {
@@ -178,7 +177,6 @@ public class Iceologer implements Listener {
         Objects.requireNonNull(iceologer.getEquipment()).setItemInMainHand(iceBow);
         iceologer.getEquipment().setItemInMainHandDropChance(0.0f);
 
-        // Añadir al mapa estático (compartido por todo el server)
         activeIceologers.put(iceologer.getUniqueId(), new IceologerState(iceologer));
 
         startCentralTask();
@@ -501,6 +499,7 @@ public class Iceologer implements Listener {
                 ItemStack iceBow = iceBowItem.createIceBow();
                 iceologer.getWorld().dropItemNaturally(iceologer.getLocation(), iceBow);
             }
+            iceologer.getWorld().dropItemNaturally(iceologer.getLocation(), ItemsTotems.createIceCrystal());
             iceologer.getWorld().playSound(iceologer.getLocation(), Sound.ENTITY_ILLUSIONER_DEATH, SoundCategory.HOSTILE, 1.0f, 1.5f);
 
             // Limpieza

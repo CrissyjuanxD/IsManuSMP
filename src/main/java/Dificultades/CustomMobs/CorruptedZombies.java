@@ -7,8 +7,10 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.*;
-import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.event.entity.EntityCombustEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -170,6 +172,7 @@ public class CorruptedZombies implements Listener {
 
         snowball.setVelocity(direction);
         snowball.setCustomName("Corrupted Zombie WindCharge");
+        snowball.setCustomNameVisible(false);
 
         Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (snowball.isValid()) {

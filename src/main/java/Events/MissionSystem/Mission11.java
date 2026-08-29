@@ -2,25 +2,18 @@ package Events.MissionSystem;
 
 import Handlers.ActionBarHandler;
 import TitleListener.SuccessNotification;
+import items.CustomPotions;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.block.Biome;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Snowman;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.NamespacedKey;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,24 +22,22 @@ public class Mission11 implements Mission, Listener {
     private final MissionHandler missionHandler;
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
-    private final NamespacedKey friendKey;
 
     public Mission11(JavaPlugin plugin, MissionHandler missionHandler) {
         this.plugin = plugin;
         this.missionHandler = missionHandler;
         this.successNotification = new SuccessNotification(plugin);
         this.actionBarHandler = new ActionBarHandler(plugin);
-        this.friendKey = new NamespacedKey(plugin, "mission_friend_snowman");
     }
 
     @Override
     public String getName() {
-        return "Los mejores amigos";
+        return "Cazador Superior";
     }
 
     @Override
     public String getDescription() {
-        return "Crea un Snow Golem en Warped Forest, quítale la calabaza y espera a que muera.";
+        return "Mata a 100 Arañas y\n100 Esqueletos.";
     }
 
     @Override
@@ -59,24 +50,26 @@ public class Mission11 implements Mission, Listener {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(5);
-        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 5);
-        ItemStack diamonds = new ItemStack(Material.PUMPKIN_PIE, 64);
+        coins.setAmount(18);
+        ItemStack potion = CustomPotions.getSplashRegenerationIIIPotion();
+        potion.setAmount(1);
+        ItemStack diamondBlocks = new ItemStack(Material.DIAMOND_BLOCK, 8);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
 
-
-        ItemStack xpFill = new ItemStack(Material.SNOW_BLOCK, 1);
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
+            if (i == 10 || i == 11 || i == 12) {
+                rewards.add(potion.clone());
+            }
+            else if (i == 14) {
                 rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
+            }
+            else if (i == 16) {
+                rewards.add(diamondBlocks);
+            }
+            else {
                 rewards.add(xpFill.clone());
             }
         }
-
         return rewards;
     }
 
@@ -86,74 +79,61 @@ public class Mission11 implements Mission, Listener {
     @Override
     public void checkCompletion(String playerName) {}
 
-    // --- NUEVO: Protección temporal para que no muera al instate ---
-    @EventHandler
-    public void onEnvironmentDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Snowman snowman)) return;
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onMobDeath(EntityDeathEvent event) {
+        org.bukkit.entity.LivingEntity entity = event.getEntity();
 
-        // Solo proteger en Warped Forest
-        if (snowman.getLocation().getBlock().getBiome() != Biome.WARPED_FOREST) return;
+        boolean isSpider = entity instanceof org.bukkit.entity.Spider;
+        boolean isSkeleton = entity instanceof org.bukkit.entity.AbstractSkeleton;
 
-        // isDerp() devuelve true si NO tiene calabaza.
-        // Queremos protegerlo MIENTRAS TIENE CALABAZA (false).
-        if (!snowman.isDerp()) {
-            if (event.getCause() == EntityDamageEvent.DamageCause.MELTING ||
-                    event.getCause() == EntityDamageEvent.DamageCause.FIRE ||
-                    event.getCause() == EntityDamageEvent.DamageCause.FIRE_TICK) {
-                event.setCancelled(true);
+        if (!isSpider && !isSkeleton) return;
+
+        Player killer = entity.getKiller();
+
+        if (killer == null && entity.getLastDamageCause() instanceof org.bukkit.event.entity.EntityDamageByEntityEvent damageEvent) {
+            if (damageEvent.getDamager() instanceof Player) {
+                killer = (Player) damageEvent.getDamager();
+            } else if (damageEvent.getDamager() instanceof org.bukkit.entity.Projectile proj) {
+                if (proj.getShooter() instanceof Player) {
+                    killer = (Player) proj.getShooter();
+                }
             }
         }
-    }
 
-    // Paso 1: Interactuar con tijeras
-    @EventHandler
-    public void onShearSnowman(PlayerInteractEntityEvent event) {
-        if (!missionHandler.isMissionActive(11)) return;
-        if (!(event.getRightClicked() instanceof Snowman snowman)) return;
+        if (killer == null) return;
 
-        Player player = event.getPlayer();
-        ItemStack item = player.getInventory().getItemInMainHand();
-        if (item.getType() != Material.SHEARS) return;
+        MissionData data = missionHandler.getData(killer, 11);
+        if (!data.isActive() || data.isCompleted()) return;
 
-        if (player.getWorld().getBiome(player.getLocation()) != Biome.WARPED_FOREST) return;
+        int spiders = data.getProgressInt("elite_spiders_killed");
+        int skeletons = data.getProgressInt("elite_skeletons_killed");
+        boolean updated = false;
 
-        // Si ya fue esquilado, no hacer nada
-        if (snowman.isDerp()) return;
+        if (isSpider && spiders < 100) {
+            spiders++;
+            data.setProgressValue("elite_spiders_killed", spiders);
+            updated = true;
+        } else if (isSkeleton && skeletons < 100) {
+            skeletons++;
+            data.setProgressValue("elite_skeletons_killed", skeletons);
+            updated = true;
+        }
 
-        // Marcar este golem como "amigo"
-        snowman.getPersistentDataContainer().set(friendKey, PersistentDataType.STRING, player.getName());
+        if (updated) {
+            missionHandler.saveData(killer, 11, data);
 
-        String msg = ChatColor.GOLD + "۞ " + ChatColor.of("#FFCC99") + "¡Adiós calabaza! Ahora espera su triste final...";
-        actionBarHandler.sendActionBar(player, msg);
+            if (spiders >= 100 && skeletons >= 100) {
+                successNotification.showSuccess(killer);
+                missionHandler.completeMission(killer, 11);
+            } else {
+                String spiderColor = spiders >= 100 ? ChatColor.GREEN.toString() : ChatColor.of("#FFA07A").toString();
+                String skeletonColor = skeletons >= 100 ? ChatColor.GREEN.toString() : ChatColor.of("#FFA07A").toString();
 
-        // Al cortarle la calabaza, snowman.isDerp() pasará a true automáticamente,
-        // por lo que el evento de onEnvironmentDamage dejará de protegerlo y morirá solo.
-    }
-
-    // Paso 2: Detectar muerte
-    @EventHandler
-    public void onSnowmanDeath(EntityDeathEvent event) {
-        if (!missionHandler.isMissionActive(11)) return;
-        if (!(event.getEntity() instanceof Snowman snowman)) return;
-
-        if (!snowman.getPersistentDataContainer().has(friendKey, PersistentDataType.STRING)) return;
-
-        EntityDamageEvent damageEvent = snowman.getLastDamageCause();
-        if (damageEvent == null) return;
-
-        if (damageEvent.getCause() == EntityDamageEvent.DamageCause.MELTING ||
-                damageEvent.getCause() == EntityDamageEvent.DamageCause.FIRE_TICK ||
-                damageEvent.getCause() == EntityDamageEvent.DamageCause.FIRE) {
-
-            String playerName = snowman.getPersistentDataContainer().get(friendKey, PersistentDataType.STRING);
-            Player player = plugin.getServer().getPlayer(playerName);
-
-            if (player != null && player.isOnline()) {
-                FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-                if (!data.getBoolean("players." + playerName + ".missions.11.completed", false)) {
-                    successNotification.showSuccess(player);
-                    missionHandler.completeMission(playerName, 11);
-                }
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Spiders: " + spiderColor + spiders + ChatColor.of("#FFE4B5") + "/100" +
+                        ChatColor.GRAY + " | " +
+                        ChatColor.of("#FFCC99") + "Skeletons: " + skeletonColor + skeletons + ChatColor.of("#FFE4B5") + "/100";
+                actionBarHandler.sendActionBar(killer, msg);
             }
         }
     }

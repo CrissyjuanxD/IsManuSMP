@@ -5,18 +5,15 @@ import TitleListener.SuccessNotification;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.block.Biome;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,6 +23,8 @@ public class Mission20 implements Mission, Listener {
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
 
+    private static final int REQUIRED_AMOUNT = 35;
+
     public Mission20(JavaPlugin plugin, MissionHandler missionHandler) {
         this.plugin = plugin;
         this.missionHandler = missionHandler;
@@ -34,43 +33,29 @@ public class Mission20 implements Mission, Listener {
     }
 
     @Override
-    public String getName() {
-        return "¿Confías en mí?";
-    }
+    public String getName() { return "Jugando a ser músico"; }
 
     @Override
-    public String getDescription() {
-        return "Sobrevive al vacío activando un tótem.";
-    }
+    public String getDescription() { return "Rompe 35 chilladores (Sculk Shriekers) en el bioma Deep Dark."; }
 
     @Override
-    public int getMissionNumber() {
-        return 20;
-    }
+    public int getMissionNumber() { return 20; }
 
     @Override
     public List<ItemStack> getRewards() {
         List<ItemStack> rewards = new ArrayList<>();
-
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(5);
-        ItemStack goldenApples = new ItemStack(Material.GOLD_INGOT, 32);
-        ItemStack diamonds = new ItemStack(Material.TOTEM_OF_UNDYING, 1);
-
-
-        ItemStack xpFill = new ItemStack(Material.BLACK_STAINED_GLASS_PANE, 1);
+        coins.setAmount(16);
+        ItemStack goldenApples = new ItemStack(Material.ENCHANTED_GOLDEN_APPLE, 5);
+        ItemStack artefact = EconomyItems.createYunqueReparadorNivel2();
+        artefact.setAmount(1);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
-                rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
-                rewards.add(xpFill.clone());
-            }
+            if (i == 11) rewards.add(goldenApples);
+            else if (i == 13) rewards.add(coins);
+            else if (i == 15) rewards.add(artefact);
+            else rewards.add(xpFill.clone());
         }
-
         return rewards;
     }
 
@@ -81,42 +66,37 @@ public class Mission20 implements Mission, Listener {
     public void checkCompletion(String playerName) {}
 
     @EventHandler
-    public void onResurrect(EntityResurrectEvent event) {
-        // Verificar si la misión está activa
-        if (!missionHandler.isMissionActive(20)) return;
+    public void onBlockBreak(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        if (block.getType() != Material.SCULK_SHRIEKER) return;
+        if (block.getBiome() != Biome.DEEP_DARK) return;
 
-        // Si el tótem no se activa (event cancelled), no hacemos nada
-        if (event.isCancelled()) return;
+        Player player = event.getPlayer();
+        if (!missionHandler.isMissionActive(player, 20)) return;
 
-        if (!(event.getEntity() instanceof Player player)) return;
+        MissionData data = missionHandler.getData(player, 20);
+        if (data.isCompleted()) return;
 
-        // --- LÓGICA CORREGIDA ---
-        EntityDamageEvent lastDamage = player.getLastDamageCause();
+        int broken = data.getProgressInt("shriekers_broken");
 
-        // Variable para determinar si fue muerte por vacío
-        boolean isVoidDeath = false;
+        if (broken < REQUIRED_AMOUNT) {
+            broken++;
+            data.setProgressValue("shriekers_broken", broken);
 
-        // 1. Chequeo Vanilla: La causa es explícitamente VOID
-        if (lastDamage != null && lastDamage.getCause() == EntityDamageEvent.DamageCause.VOID) {
-            isVoidDeath = true;
-        }
-        // 2. Chequeo Custom (DayFiveChanges):
-        // Si la causa NO es void (porque el plugin aplicó daño manual), verificamos contexto:
-        // - Está en el END
-        // - Está en altura negativa (cayendo al vacío)
-        else if (player.getWorld().getEnvironment() == World.Environment.THE_END && player.getLocation().getY() < -50) {
-            isVoidDeath = true;
-        }
+            event.setDropItems(false);
 
-        if (isVoidDeath) {
-            String name = player.getName();
-            FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
+            missionHandler.saveData(player, 20, data);
 
-            if (!data.getBoolean("players." + name + ".missions.20.completed", false)) {
+            if (broken >= REQUIRED_AMOUNT) {
                 successNotification.showSuccess(player);
-                String msg = ChatColor.GOLD + "۞ " + ChatColor.of("#FFCC99") + "¡Has desafiado al vacío!";
+                missionHandler.completeMission(player, 20);
+            } else {
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Chilladores: " +
+                        ChatColor.of("#FFA07A") + broken +
+                        ChatColor.of("#FFE4B5") + "/" +
+                        ChatColor.of("#FFA07A") + REQUIRED_AMOUNT;
                 actionBarHandler.sendActionBar(player, msg);
-                missionHandler.completeMission(name, 20);
             }
         }
     }

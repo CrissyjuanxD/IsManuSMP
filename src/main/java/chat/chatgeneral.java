@@ -1,5 +1,6 @@
 package chat;
 
+import Handlers.Teams.TeamType;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -29,67 +30,27 @@ public class chatgeneral implements Listener {
         Scoreboard scoreboard = player.getScoreboard();
         Team team = scoreboard.getEntryTeam(player.getName());
 
-        // Prefijos y sufijos del equipo
-        String prefix = (team != null) ? team.getPrefix() : "";
-        String suffix = (team != null) ? team.getSuffix() : "";
+        String finalPrefix = "";
+        String suffix = "";
+        ChatColor nameColor = ChatColor.WHITE;
 
-        // Color del nombre y prefijo basado en el equipo
-        ChatColor playerNameColor = getTeamColor(team);
-        String teamPrefix = getTeamPrefix(team);
+        if (team != null) {
+            suffix = team.getSuffix();
+            TeamType type = TeamType.getById(team.getName());
 
-        String formattedMessage = teamPrefix + " " + playerNameColor + player.getName() + ChatColor.RESET + suffix + ChatColor.WHITE + ": " + event.getMessage();
-
-        event.setFormat(formattedMessage);
-    }
-
-    // Método para obtener el color del equipo
-    private ChatColor getTeamColor(Team team) {
-        if (team == null) {
-            return ChatColor.DARK_AQUA;
-        }
-        String teamName = team.getName();
-
-            // Personalizar colores según el nombre del equipo
-            switch (teamName) {
-                case "Admin":
-                    return ChatColor.of("#ff935f");
-                case "Mod":
-                    return ChatColor.of("#00BFFF");
-                case "Helper":
-                    return ChatColor.of("#67E590");
-                case "TSurvivor":
-                    return ChatColor.of("#9455ED");
-                case "ZMiembro":
-                    return ChatColor.of("#ffa39d");
-                case "ZFantasma":
-                    return ChatColor.of("#555555");
-                default:
-                    return ChatColor.RESET;
+            if (type != null) {
+                // Toma toda la info directamente del Enum optimizado
+                finalPrefix = type.getChatPrefix();
+                nameColor = type.getBungeeColor();
+            } else {
+                finalPrefix = team.getPrefix();
             }
-    }
+        } else {
+            finalPrefix = ChatColor.GRAY + "";
+        }
 
-    //Metodo para obtener el Prefijo del equipo.
-    private String getTeamPrefix(Team team) {
-        if (team == null) {
-            return "";
-        }
-        String teamName = team.getName();
-        switch (teamName) {
-            case "Admin":
-                return ChatColor.GRAY + "" + ChatColor.BOLD + "[" + ChatColor.GOLD + ChatColor.BOLD + "HOKAGE" + ChatColor.GRAY + ChatColor.BOLD + "]";
-            case "Mod":
-                return ChatColor.GRAY + "" + ChatColor.BOLD + "[" + ChatColor.AQUA + ChatColor.BOLD + "ANBU" + ChatColor.GRAY + ChatColor.BOLD + "]";
-            case "Helper":
-                return "\uEB89";
-            case "TSurvivor":
-                return "\uEB8A";
-            case "ZMiembro":
-                return ChatColor.GRAY + "" + ChatColor.BOLD + "[" + ChatColor.of("#ffa39d") + ChatColor.BOLD + "ALDEANO" + ChatColor.GRAY + ChatColor.BOLD + "]";
-            case "ZFantasma":
-                return "\uEB8C";
-            default:
-                return "";
-        }
+        // Formateo del mensaje usando las variables de la enumeración
+        event.setFormat(finalPrefix + nameColor + "%1$s" + ChatColor.RESET + suffix + ChatColor.WHITE + ": %2$s");
     }
 
     // Mensajes de Moderacion
@@ -114,6 +75,7 @@ public class chatgeneral implements Listener {
             Bukkit.getConsoleSender().sendMessage(ChatColor.DARK_PURPLE + (player.getName() + " HA ROTO UN COFRE, COORDENADAS " + block.getLocation() + ", FECHA: ").toUpperCase() + ChatColor.GOLD + formatter.format(date).toUpperCase());
         }
     }
+
     @EventHandler
     public void onInventoryCreative(InventoryCreativeEvent event) {
         Player player = (Player) event.getWhoClicked();
@@ -126,5 +88,4 @@ public class chatgeneral implements Listener {
             Bukkit.getConsoleSender().sendMessage(ChatColor.DARK_PURPLE + (player.getName() + " HA SACADO " + item.getAmount() + " " + item.getType() + " DEL MODO CREATIVO, FECHA: ").toUpperCase() + ChatColor.YELLOW + formatter.format(date).toUpperCase());
         }
     }
-
 }

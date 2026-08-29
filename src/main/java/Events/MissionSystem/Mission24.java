@@ -2,11 +2,10 @@ package Events.MissionSystem;
 
 import Handlers.ActionBarHandler;
 import TitleListener.SuccessNotification;
+import items.CustomPotions;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -24,7 +23,6 @@ public class Mission24 implements Mission, Listener {
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
 
-    // Mapa para controlar los temporizadores activos
     private final Map<UUID, BukkitTask> activeTimers = new HashMap<>();
 
     public Mission24(JavaPlugin plugin, MissionHandler missionHandler) {
@@ -35,43 +33,39 @@ public class Mission24 implements Mission, Listener {
     }
 
     @Override
-    public String getName() {
-        return "¡Jugando con Fuego!";
-    }
+    public String getName() { return "¡Jugando con Fuego!"; }
 
     @Override
-    public String getDescription() {
-        return "Sobrevive 5 segundos con medio corazón y la mano secundaria vacía.";
-    }
+    public String getDescription() { return "Sobrevive 10 minutos con medio\ncorazón y la mano secundaria vacía."; }
 
     @Override
-    public int getMissionNumber() {
-        return 24;
-    }
+    public int getMissionNumber() { return 24; }
 
     @Override
     public List<ItemStack> getRewards() {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(5);
-        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 10);
-        ItemStack diamonds = new ItemStack(Material.DIAMOND_BLOCK, 5);
+        coins.setAmount(17);
+        ItemStack potion = CustomPotions.getSplashRegenerationIIIPotion();
+        potion.setAmount(1);
+        ItemStack diamondBlocks = new ItemStack(Material.DIAMOND_BLOCK, 15);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
 
-
-        ItemStack xpFill = new ItemStack(Material.GOLDEN_CARROT, 4);
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
+            if (i == 10 || i == 11 || i == 12) {
+                rewards.add(potion.clone());
+            }
+            else if (i == 14) {
                 rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
+            }
+            else if (i == 16) {
+                rewards.add(diamondBlocks);
+            }
+            else {
                 rewards.add(xpFill.clone());
             }
         }
-
         return rewards;
     }
 
@@ -83,17 +77,13 @@ public class Mission24 implements Mission, Listener {
 
     @EventHandler
     public void onDamage(EntityDamageEvent event) {
-        if (!missionHandler.isMissionActive(24)) return;
         if (!(event.getEntity() instanceof Player player)) return;
+        if (!missionHandler.isMissionActive(player, 24)) return;
 
         double finalHealth = player.getHealth() - event.getFinalDamage();
 
-        // Si la vida baja a 1.0 (medio corazón) o menos, pero no muere
         if (finalHealth <= 1.0 && finalHealth > 0) {
-            // Verificar si ya hay un timer corriendo
             if (activeTimers.containsKey(player.getUniqueId())) return;
-
-            // Verificar mano vacía
             if (isOffHandEmpty(player)) {
                 startSurvivalTimer(player);
             }
@@ -101,19 +91,17 @@ public class Mission24 implements Mission, Listener {
     }
 
     private void startSurvivalTimer(Player player) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        if (data.getBoolean("players." + player.getName() + ".missions.24.completed", false)) return;
+        if (missionHandler.isMissionCompleted(player, 24)) return;
 
-        player.sendMessage(ChatColor.RED + "⚠ " + ChatColor.of("#FFA07A") + "¡Sobrevive 5 segundos!");
+        player.sendMessage(ChatColor.RED + "⚠ " + ChatColor.of("#FFA07A") + "¡Sobrevive 10 minutos!");
 
         BukkitTask task = new BukkitRunnable() {
-            int secondsLeft = 5;
+            int secondsElapsed = 0;
+            final int targetSeconds = 600;
 
             @Override
             public void run() {
-                // Validaciones de cancelación
                 if (!player.isOnline() || player.isDead() || player.getHealth() > 1.0 || !isOffHandEmpty(player)) {
-                    // Si se cura, muere o se equipa algo, falló
                     if (player.isOnline() && !player.isDead()) {
                         String msg = ChatColor.RED + "✖ Desafío cancelado";
                         actionBarHandler.sendActionBar(player, msg);
@@ -123,23 +111,28 @@ public class Mission24 implements Mission, Listener {
                     return;
                 }
 
-                // Feedback visual
-                String msg = ChatColor.GOLD + "۞ " + ChatColor.of("#FFCC99") + "Aguanta: " +
-                        ChatColor.of("#FFA07A") + secondsLeft + "s";
+                int minutes = secondsElapsed / 60;
+                int seconds = secondsElapsed % 60;
+                String timeFormatted = String.format("%02d:%02d", minutes, seconds);
+
+                String msg = ChatColor.GOLD + "۞ " + ChatColor.of("#FFCC99") + "Tiempo sobrevivido: " +
+                        ChatColor.of("#FFA07A") + timeFormatted + ChatColor.of("#FFE4B5") + " / 10:00";
                 actionBarHandler.sendActionBar(player, msg);
-                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 2f);
 
-                secondsLeft--;
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_HAT, 0.3f, 2f);
 
-                if (secondsLeft < 0) {
-                    // COMPLETADO
+                // Condición de victoria
+                if (secondsElapsed >= targetSeconds) {
                     successNotification.showSuccess(player);
-                    missionHandler.completeMission(player.getName(), 24);
+                    missionHandler.completeMission(player, 24);
                     activeTimers.remove(player.getUniqueId());
                     this.cancel();
+                    return;
                 }
+
+                secondsElapsed++;
             }
-        }.runTaskTimer(plugin, 0L, 20L); // Chequear cada segundo (20 ticks)
+        }.runTaskTimer(plugin, 0L, 20L);
 
         activeTimers.put(player.getUniqueId(), task);
     }

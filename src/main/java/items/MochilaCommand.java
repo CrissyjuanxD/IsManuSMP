@@ -1,8 +1,8 @@
 package items;
 
+import Handlers.DatabaseManager;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -14,6 +14,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class MochilaCommand implements CommandExecutor {
 
@@ -30,47 +31,92 @@ public class MochilaCommand implements CommandExecutor {
             return true;
         }
 
-        if (args.length < 1) {
-            sender.sendMessage(ChatColor.RED + "Uso: /mochilas <jugador | lost> [give]");
-            return true;
-        }
-
-        if (args[0].equalsIgnoreCase("lost")) {
-            if (sender instanceof Player) {
-                functions.openAllBackpacksMenu((Player) sender);
-                sender.sendMessage(ChatColor.YELLOW + "Cargando registro de mochilas...");
-            } else {
-                sender.sendMessage("Solo jugadores.");
-            }
-            return true;
-        }
-
-        Player target = Bukkit.getPlayer(args[0]);
-
-        // Lógica para /mochilas give <jugador>
-        if (args.length > 1 && args[0].equalsIgnoreCase("give")) {
-            target = Bukkit.getPlayer(args[1]);
-            if (target == null) {
-                sender.sendMessage(ChatColor.RED + "Jugador no encontrado.");
+        // --- /delmochilas <nombre> ---
+        if (label.equalsIgnoreCase("delmochilas")) {
+            if (args.length < 1) {
+                sender.sendMessage(ChatColor.RED + "Uso: /delmochilas <jugador>");
                 return true;
             }
-            if (sender instanceof Player) openGiveMenu((Player) sender, target);
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Solo jugadores.");
+                return true;
+            }
+            // Iniciamos búsqueda en base de datos
+            buscarJugadorYAbrirMenu((Player) sender, args[0], true);
             return true;
         }
 
-        OfflinePlayer targetOffline = Bukkit.getOfflinePlayer(args[0]);
+        // --- /mochilas <nombre> [give] ---
+        if (args.length < 1) {
+            sender.sendMessage(ChatColor.RED + "Uso: /mochilas <jugador> [give]");
+            return true;
+        }
 
-        // Verificamos si alguna vez ha entrado al server (tiene datos)
-        if (!targetOffline.hasPlayedBefore() && !targetOffline.isOnline()) {
-            sender.sendMessage(ChatColor.RED + "Este jugador nunca ha entrado al servidor.");
+        if (args.length > 1 && args[0].equalsIgnoreCase("give")) {
+            Player targetOnline = Bukkit.getPlayer(args[1]);
+            if (targetOnline == null) {
+                sender.sendMessage(ChatColor.RED + "El jugador " + args[1] + " no está conectado.");
+                return true;
+            }
+            if (sender instanceof Player) openGiveMenu((Player) sender, targetOnline);
             return true;
         }
 
         if (sender instanceof Player) {
-            openRecoveryMenu((Player) sender, targetOffline);
+            buscarJugadorYAbrirMenu((Player) sender, args[0], false);
         }
 
         return true;
+    }
+
+    // --- LÓGICA CENTRALIZADA DE BÚSQUEDA ---
+    private void buscarJugadorYAbrirMenu(Player admin, String targetName, boolean isDeleteMode) {
+        admin.sendMessage(ChatColor.YELLOW + "🔍 Buscando datos de " + targetName + " en la base de datos...");
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                UUID targetUUID = functions.getDbManager().getUuidByName(targetName);
+
+                if (targetUUID == null) {
+                    try {
+                        targetUUID = Bukkit.getOfflinePlayer(targetName).getUniqueId();
+                    } catch (Exception ignored) {}
+                }
+
+                if (targetUUID == null) {
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            admin.sendMessage(ChatColor.RED + "❌ Jugador no encontrado en la base de datos ni caché.");
+                        }
+                    }.runTask(functions.getPlugin());
+                    return;
+                }
+
+                List<DatabaseManager.BackpackInfo> backpacks = functions.getDbManager().getPlayerBackpacks(targetUUID);
+                final UUID finalUUID = targetUUID;
+
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        if (backpacks.isEmpty()) {
+                            admin.sendMessage(ChatColor.RED + "⚠ El jugador " + targetName + " no tiene mochilas guardadas.");
+                            return;
+                        }
+
+                        String titulo = isDeleteMode ?
+                                ChatColor.RED + "BORRAR Mochilas de: " + targetName :
+                                ChatColor.DARK_RED + "Mochilas de: " + targetName;
+
+                        Inventory inv = Bukkit.createInventory(null, 54, titulo);
+                        fillBackpackGui(inv, backpacks, isDeleteMode);
+                        admin.openInventory(inv);
+                        admin.sendMessage(ChatColor.GREEN + "✔ Datos cargados correctamente. (UUID: " + finalUUID.toString().substring(0,8) + "...)");
+                    }
+                }.runTask(functions.getPlugin());
+            }
+        }.runTaskAsynchronously(functions.getPlugin());
     }
 
     private void openGiveMenu(Player admin, Player target) {
@@ -83,55 +129,30 @@ public class MochilaCommand implements CommandExecutor {
         admin.openInventory(inv);
     }
 
-    private void openRecoveryMenu(Player admin, OfflinePlayer target) {
-        admin.sendMessage(ChatColor.YELLOW + "Buscando mochilas en la base de datos para: " + target.getName() + "...");
+    private void fillBackpackGui(Inventory inv, List<DatabaseManager.BackpackInfo> backpacks, boolean isDeleteMode) {
+        for (DatabaseManager.BackpackInfo info : backpacks) {
+            ItemStack icon = functions.getBackpackItemByLevel(info.level);
+            ItemMeta meta = icon.getItemMeta();
 
-        // Hacemos la consulta Asíncrona para no congelar el server
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                // 1. Obtener IDs desde la Base de Datos
-                List<String> ids = functions.getBackpacksByOwner(target.getUniqueId());
+            meta.setDisplayName(info.itemName != null ? info.itemName : ChatColor.GOLD + "Mochila");
 
-                // 2. Volver al hilo principal para abrir el inventario
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
-                        if (ids.isEmpty()) {
-                            admin.sendMessage(ChatColor.RED + "No se encontraron registros de mochilas para " + target.getName());
-                            return;
-                        }
+            List<String> lore = new ArrayList<>();
+            lore.add(ChatColor.GRAY + "Nivel: " + ChatColor.AQUA + info.level);
+            lore.add(ChatColor.GRAY + "Actualizada: " + ChatColor.AQUA + info.updatedAt);
+            lore.add("");
+            lore.add(ChatColor.DARK_GRAY + "ID: " + info.uuid);
+            lore.add("");
 
-                        Inventory inv = Bukkit.createInventory(null, 54, ChatColor.DARK_RED + "Mochilas de: " + target.getName());
-
-                        for (String id : ids) {
-                            // Creamos una representación visual.
-                            // Usamos una Mochila Nivel 5 (Morada) por defecto para asegurar que quepan los items al recuperar
-                            ItemStack icon = EconomyItems.createPurpleMochila();
-
-                            ItemMeta meta = icon.getItemMeta();
-                            // Forzamos el nombre para identificarla visualmente
-                            meta.setDisplayName(ChatColor.GOLD + "Mochila Registrada");
-
-                            List<String> lore = new ArrayList<>();
-                            lore.add(ChatColor.DARK_GRAY + "ID: " + ChatColor.GRAY + id);
-                            lore.add("");
-                            lore.add(ChatColor.GREEN + "Click para obtener una COPIA");
-                            lore.add(ChatColor.GRAY + "Recupera los items guardados en la DB.");
-
-                            meta.setLore(lore);
-                            // IMPORTANTE: Guardamos el ID en el CustomModelData o Lore para que el Listener funcione
-                            // Pero tu listener actual lee el Lore "ID: ...", así que con el lore de arriba basta.
-                            icon.setItemMeta(meta);
-
-                            inv.addItem(icon);
-                        }
-
-                        admin.openInventory(inv);
-                        admin.sendMessage(ChatColor.GREEN + "Mostrando " + ids.size() + " mochilas registradas en el historial.");
-                    }
-                }.runTask(functions.getPlugin());
+            if (isDeleteMode) {
+                lore.add(ChatColor.RED + "➤ Click Izquierdo: " + ChatColor.DARK_RED + "" + ChatColor.BOLD + "BORRAR PARA SIEMPRE");
+            } else {
+                lore.add(ChatColor.GREEN + "➤ Click Izquierdo: " + ChatColor.WHITE + "Recuperar (Copia)");
+                lore.add(ChatColor.YELLOW + "➤ Click Derecho: " + ChatColor.WHITE + "Espiar / Editar Contenido");
             }
-        }.runTaskAsynchronously(functions.getPlugin());
+
+            meta.setLore(lore);
+            icon.setItemMeta(meta);
+            inv.addItem(icon);
+        }
     }
 }

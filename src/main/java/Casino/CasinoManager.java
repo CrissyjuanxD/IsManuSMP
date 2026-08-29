@@ -1,5 +1,6 @@
 package Casino;
 
+import Managers.ItemManager;
 import net.md_5.bungee.api.ChatColor; // Importante para colores Hex
 import org.bukkit.*;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -16,24 +17,24 @@ import java.util.*;
 
 public class CasinoManager {
     private final JavaPlugin plugin;
+    private final ItemManager itemManager;
     private final File tableFile;
     private FileConfiguration tableConfig;
 
-    // Mapa: Ubicación -> Tipo de mesa ("blackjack" o "slot")
     private final Map<Location, String> casinoTables = new HashMap<>();
-    // Mapa: Ubicación -> Entidad Holograma
     private final Map<Location, TextDisplay> activeHolograms = new HashMap<>();
 
     private final SlotMachine slotMachine;
     private final BlackJack blackJack;
 
-    public CasinoManager(JavaPlugin plugin) {
+    public CasinoManager(JavaPlugin plugin, ItemManager itemManager) {
         this.plugin = plugin;
+        this.itemManager = itemManager;
         this.tableFile = new File(plugin.getDataFolder(), "CasinoTables.yml");
 
         loadTables();
 
-        this.slotMachine = new SlotMachine(plugin, this);
+        this.slotMachine = new SlotMachine(plugin, this, itemManager);
         this.blackJack = new BlackJack(plugin, this);
 
         startParticleTask();
@@ -104,7 +105,6 @@ public class CasinoManager {
     }
 
     public void reload() {
-        // Limpieza profunda de hologramas
         for (World w : Bukkit.getWorlds()) {
             for (Entity e : w.getEntities()) {
                 if (e.getScoreboardTags().contains("casino_hologram")) {
@@ -126,7 +126,6 @@ public class CasinoManager {
     // --- LÓGICA DE HOLOGRAMAS ---
 
     public void setGameActive(Location loc, boolean active) {
-        // Asegurar que usamos la ubicación del bloque
         Location blockLoc = new Location(loc.getWorld(), loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
 
         if (!casinoTables.containsKey(blockLoc)) return;
@@ -134,13 +133,12 @@ public class CasinoManager {
         if (active) {
             removeHologram(blockLoc);
         } else {
-            removeHologram(blockLoc); // Limpieza preventiva
+            removeHologram(blockLoc);
             spawnHologram(blockLoc);
         }
     }
 
     private void refreshHolograms() {
-        // Limpiar
         for (World w : Bukkit.getWorlds()) {
             for (Entity e : w.getEntities()) {
                 if (e instanceof TextDisplay && e.getScoreboardTags().contains("casino_hologram")) {
@@ -150,7 +148,6 @@ public class CasinoManager {
         }
         activeHolograms.clear();
 
-        // Respawnear
         for (Location loc : casinoTables.keySet()) {
             spawnHologram(loc);
         }
@@ -160,18 +157,15 @@ public class CasinoManager {
         if (activeHolograms.containsKey(loc)) return;
         if (!loc.getChunk().isLoaded()) return;
 
-        // CAMBIO: Altura +3.5 (antes 1.5) para que flote más alto
-        Location holoLoc = loc.clone().add(0.5, 3.5, 0.5);
+        Location holoLoc = loc.clone().add(0.5, 3.0, 0.5);
 
         String type = casinoTables.get(loc);
         String titleText;
 
-        // Colores Pastel
-        ChatColor colorTitle = ChatColor.of("#FFB7B2"); // Rosa pastel / Rojo suave
-        ChatColor colorSub = ChatColor.of("#B5EAD7");   // Verde menta pastel
-        ChatColor colorArrow = ChatColor.of("#FFF5BA"); // Amarillo pastel
+        ChatColor colorTitle = ChatColor.of("#FFB7B2");
+        ChatColor colorSub = ChatColor.of("#B5EAD7");
+        ChatColor colorArrow = ChatColor.of("#FFF5BA");
 
-        // Definir título según el juego
         if ("blackjack".equalsIgnoreCase(type)) {
             titleText = colorTitle + "" + ChatColor.BOLD + "BlackJack";
         } else if ("slot".equalsIgnoreCase(type)) {
@@ -182,7 +176,6 @@ public class CasinoManager {
 
         TextDisplay display = loc.getWorld().spawn(holoLoc, TextDisplay.class);
 
-        // Texto con título, instrucción y flecha
         display.setText(
                 titleText + "\n" +
                         colorSub + "Click derecho para jugar\n" +
@@ -192,14 +185,13 @@ public class CasinoManager {
         display.setBillboard(Display.Billboard.CENTER);
         display.addScoreboardTag("casino_hologram");
         display.setPersistent(true);
-        display.setShadowed(true); // Sombra para legibilidad
-        display.setBackgroundColor(Color.fromARGB(0, 0, 0, 0)); // Fondo transparente
+        display.setShadowed(true);
+        display.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
 
         activeHolograms.put(loc, display);
     }
 
     private void removeHologram(Location loc) {
-        // 1. Eliminar del mapa
         if (activeHolograms.containsKey(loc)) {
             TextDisplay display = activeHolograms.get(loc);
             if (display != null && display.isValid()) {
@@ -208,9 +200,8 @@ public class CasinoManager {
             activeHolograms.remove(loc);
         }
 
-        // 2. Limpieza de huérfanos en el área (por si acaso)
         if (loc.getWorld() != null && loc.getChunk().isLoaded()) {
-            Location searchLoc = loc.clone().add(0.5, 3.5, 0.5); // Misma altura que el spawn
+            Location searchLoc = loc.clone().add(0.5, 3.0, 0.5);
             for (Entity e : loc.getChunk().getEntities()) {
                 if (e instanceof TextDisplay && e.getScoreboardTags().contains("casino_hologram")) {
                     if (e.getLocation().distanceSquared(searchLoc) < 2.0) {
@@ -243,7 +234,6 @@ public class CasinoManager {
 
                     Color color = type.equalsIgnoreCase("blackjack") ? Color.LIME : Color.ORANGE;
 
-                    // Ajusté ligeramente la altura de las partículas también para que no queden tan lejos del holograma
                     loc.getWorld().spawnParticle(Particle.DUST, x, loc.getY() + 1.2, z, 1,
                             new Particle.DustOptions(color, 1));
 
@@ -258,7 +248,6 @@ public class CasinoManager {
     }
 
     public boolean isTable(Location loc) {
-        // Asegurar comparacion de bloque
         Location blockLoc = new Location(loc.getWorld(), loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
         return casinoTables.containsKey(blockLoc);
     }

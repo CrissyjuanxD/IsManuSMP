@@ -5,16 +5,16 @@ import TitleListener.SuccessNotification;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,12 +33,12 @@ public class Mission17 implements Mission, Listener {
 
     @Override
     public String getName() {
-        return "Jugando a ser Dios";
+        return "Cazador Profesional";
     }
 
     @Override
     public String getDescription() {
-        return "Activa 5 Tótems de la Inmortalidad.";
+        return "Mata a 120 Endermans y\n120 Creepers.";
     }
 
     @Override
@@ -51,70 +51,94 @@ public class Mission17 implements Mission, Listener {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(7);
-        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 20);
-        ItemStack diamonds = new ItemStack(Material.TOTEM_OF_UNDYING, 2);
+        coins.setAmount(20);
 
+        ItemStack sharpBook = new ItemStack(Material.ENCHANTED_BOOK);
+        EnchantmentStorageMeta meta = (EnchantmentStorageMeta) sharpBook.getItemMeta();
+        if (meta != null) {
+            meta.addStoredEnchant(Enchantment.SHARPNESS, 7, true);
+            sharpBook.setItemMeta(meta);
+        }
 
-        ItemStack xpFill = new ItemStack(Material.GOLD_INGOT, 1);
+        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 15);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
+
         for (int i = 0; i < 27; i++) {
             if (i == 11) {
-                rewards.add(goldenApples);
+                rewards.add(sharpBook);
             } else if (i == 13) {
                 rewards.add(coins);
             } else if (i == 15) {
-                rewards.add(diamonds);
+                rewards.add(goldenApples);
             } else {
                 rewards.add(xpFill.clone());
             }
         }
-
         return rewards;
     }
 
     @Override
-    public void initializePlayerData(String playerName) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        data.set("players." + playerName + ".missions.17.totems_popped", 0);
-        try { data.save(missionHandler.getMissionFile()); } catch (IOException e) { e.printStackTrace(); }
-    }
+    public void initializePlayerData(String playerName) {}
 
     @Override
     public void checkCompletion(String playerName) {}
 
-    @EventHandler
-    public void onTotemPop(EntityResurrectEvent event) {
-        if (!missionHandler.isMissionActive(17)) return;
-        if (event.isCancelled()) return;
-        if (!(event.getEntity() instanceof Player player)) return;
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onMobDeath(EntityDeathEvent event) {
+        org.bukkit.entity.LivingEntity entity = event.getEntity();
 
-        // Verificar que realmente usó un totem (aunque el evento suele ser suficiente)
-        // Spigot lanza este evento justo antes de consumir el totem.
+        boolean isEnderman = entity instanceof org.bukkit.entity.Enderman;
+        boolean isCreeper = entity instanceof org.bukkit.entity.Creeper;
 
-        String name = player.getName();
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        if (data.getBoolean("players." + name + ".missions.17.completed", false)) return;
+        if (!isEnderman && !isCreeper) return;
 
-        int popped = data.getInt("players." + name + ".missions.17.totems_popped", 0);
+        Player killer = entity.getKiller();
 
-        if (popped < 5) {
-            popped++;
-            data.set("players." + name + ".missions.17.totems_popped", popped);
-
-            try {
-                data.save(missionHandler.getMissionFile());
-                if (popped >= 5) {
-                    successNotification.showSuccess(player);
-                    missionHandler.completeMission(name, 17);
-                } else {
-                    String msg = ChatColor.GOLD + "۞ " +
-                            ChatColor.of("#FFCC99") + "Tótems activados: " +
-                            ChatColor.of("#FFA07A") + popped +
-                            ChatColor.of("#FFE4B5") + "/" +
-                            ChatColor.of("#FFA07A") + "5";
-                    actionBarHandler.sendActionBar(player, msg);
+        if (killer == null && entity.getLastDamageCause() instanceof org.bukkit.event.entity.EntityDamageByEntityEvent damageEvent) {
+            if (damageEvent.getDamager() instanceof Player) {
+                killer = (Player) damageEvent.getDamager();
+            } else if (damageEvent.getDamager() instanceof org.bukkit.entity.Projectile proj) {
+                if (proj.getShooter() instanceof Player) {
+                    killer = (Player) proj.getShooter();
                 }
-            } catch (IOException e) { e.printStackTrace(); }
+            }
+        }
+
+        if (killer == null) return;
+
+        MissionData data = missionHandler.getData(killer, 17);
+        if (!data.isActive() || data.isCompleted()) return;
+
+        int endermen = data.getProgressInt("elite_endermen_killed");
+        int creepers = data.getProgressInt("elite_creepers_killed");
+        boolean updated = false;
+
+        if (isEnderman && endermen < 120) {
+            endermen++;
+            data.setProgressValue("elite_endermen_killed", endermen);
+            updated = true;
+        } else if (isCreeper && creepers < 120) {
+            creepers++;
+            data.setProgressValue("elite_creepers_killed", creepers);
+            updated = true;
+        }
+
+        if (updated) {
+            missionHandler.saveData(killer, 17, data);
+
+            if (endermen >= 120 && creepers >= 120) {
+                successNotification.showSuccess(killer);
+                missionHandler.completeMission(killer, 17);
+            } else {
+                String enderColor = endermen >= 120 ? ChatColor.GREEN.toString() : ChatColor.of("#FFA07A").toString();
+                String creeperColor = creepers >= 120 ? ChatColor.GREEN.toString() : ChatColor.of("#FFA07A").toString();
+
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Endermans: " + enderColor + endermen + ChatColor.of("#FFE4B5") + "/120" +
+                        ChatColor.GRAY + " | " +
+                        ChatColor.of("#FFCC99") + "Creepers: " + creeperColor + creepers + ChatColor.of("#FFE4B5") + "/120";
+                actionBarHandler.sendActionBar(killer, msg);
+            }
         }
     }
 }

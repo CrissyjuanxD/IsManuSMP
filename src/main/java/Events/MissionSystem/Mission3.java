@@ -2,11 +2,11 @@ package Events.MissionSystem;
 
 import Handlers.ActionBarHandler;
 import TitleListener.SuccessNotification;
+import items.CustomPotions;
+import items.EconomyFlyTotem;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -15,7 +15,6 @@ import org.bukkit.event.raid.RaidFinishEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,22 +23,24 @@ public class Mission3 implements Mission, Listener {
     private final MissionHandler missionHandler;
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
+    private final EconomyFlyTotem economyFlyTotem;
 
     public Mission3(JavaPlugin plugin, MissionHandler missionHandler) {
         this.plugin = plugin;
         this.missionHandler = missionHandler;
+        this.economyFlyTotem = new EconomyFlyTotem(plugin);
         this.successNotification = new SuccessNotification(plugin);
         this.actionBarHandler = new ActionBarHandler(plugin);
     }
 
     @Override
     public String getName() {
-        return "El Héroe Dorado"; // Combinación de nombres sugerida
+        return "El Héroe Dorado";
     }
 
     @Override
     public String getDescription() {
-        return "Completa una Raid y fabrica 15 manzanas de oro.";
+        return "Completa 1 Raid y fabrica\n32 manzanas de oro.";
     }
 
     @Override
@@ -52,54 +53,61 @@ public class Mission3 implements Mission, Listener {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(5);
-        ItemStack goldenApples = new ItemStack(Material.DIAMOND, 5);
-        ItemStack diamonds = new ItemStack(Material.TOTEM_OF_UNDYING, 1);
+        coins.setAmount(15);
 
+        ItemStack totem = new ItemStack(Material.TOTEM_OF_UNDYING, 1);
+        ItemStack potion = CustomPotions.getResistanceIIPotion();
+        potion.setAmount(1);
+        ItemStack potion2 = CustomPotions.getSplashAbsorptionXPotion();
+        potion.setAmount(1);
+        ItemStack flyTotem = economyFlyTotem.createFlyTotem();
 
-        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE,1);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
+
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
+            if (i == 10 || i == 12) {
+                rewards.add(potion.clone());
+            }
+            else if (i == 11) {
+                rewards.add(potion2.clone());
+            }
+            else if (i == 13) {
                 rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
+            }
+            else if (i == 14 || i == 16) {
+                rewards.add(totem.clone());
+            }
+            else if (i == 15) {
+                rewards.add(flyTotem.clone());
+            }
+            else {
                 rewards.add(xpFill.clone());
             }
         }
-
         return rewards;
     }
 
     @Override
-    public void initializePlayerData(String playerName) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        data.set("players." + playerName + ".missions.3.raid_completed", false);
-        data.set("players." + playerName + ".missions.3.apples_crafted", 0);
-        try { data.save(missionHandler.getMissionFile()); } catch (IOException e) { e.printStackTrace(); }
-    }
+    public void initializePlayerData(String playerName) {}
 
     @Override
     public void checkCompletion(String playerName) {}
 
-    // OBJETIVO 1: RAID
     @EventHandler
     public void onRaidFinish(RaidFinishEvent event) {
-        if (!missionHandler.isMissionActive(3)) return;
         if (event.getRaid().getStatus() != org.bukkit.Raid.RaidStatus.VICTORY) return;
 
         for (Player player : event.getWinners()) {
-            updateProgress(player, "raid_completed", true);
+            if (missionHandler.isMissionActive(player, 3)) {
+                updateProgress(player, "raids_completed", 1);
+            }
         }
     }
 
-    // OBJETIVO 2: CRAFTEO
     @EventHandler
     public void onCraftItem(CraftItemEvent event) {
-        if (!missionHandler.isMissionActive(3)) return;
         if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!missionHandler.isMissionActive(player, 3)) return;
 
         ItemStack result = event.getRecipe().getResult();
         if (result.getType() != Material.GOLDEN_APPLE) return;
@@ -119,52 +127,47 @@ public class Mission3 implements Mission, Listener {
         }
     }
 
-    private void updateProgress(Player player, String type, Object value) {
-        String name = player.getName();
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-
-        if (data.getBoolean("players." + name + ".missions.3.completed", false)) return;
+    private void updateProgress(Player player, String type, int value) {
+        MissionData data = missionHandler.getData(player, 3);
+        if (data.isCompleted()) return;
 
         boolean updated = false;
 
-        if (type.equals("raid_completed")) {
-            if (!data.getBoolean("players." + name + ".missions.3.raid_completed", false)) {
-                data.set("players." + name + ".missions.3.raid_completed", true);
+        if (type.equals("raids_completed")) {
+            int current = data.getProgressInt("raids_completed");
+            if (current < 1) { // Actualizado a 1
+                data.setProgressValue("raids_completed", Math.min(1, current + value));
                 updated = true;
             }
         } else if (type.equals("apples_crafted")) {
-            int current = data.getInt("players." + name + ".missions.3.apples_crafted", 0);
-            int amount = (int) value;
-            if (current < 15) {
-                int newTotal = Math.min(15, current + amount); // Tope de 15 para estética
-                data.set("players." + name + ".missions.3.apples_crafted", newTotal);
+            int current = data.getProgressInt("apples_crafted");
+            if (current < 32) { // Actualizado a 32
+                int newTotal = Math.min(32, current + value);
+                data.setProgressValue("apples_crafted", newTotal);
                 updated = true;
             }
         }
 
         if (updated) {
-            try {
-                data.save(missionHandler.getMissionFile());
+            missionHandler.saveData(player, 3, data);
 
-                boolean raidDone = data.getBoolean("players." + name + ".missions.3.raid_completed", false);
-                int apples = data.getInt("players." + name + ".missions.3.apples_crafted", 0);
+            int raidsDone = data.getProgressInt("raids_completed");
+            int apples = data.getProgressInt("apples_crafted");
 
-                if (raidDone && apples >= 15) {
-                    successNotification.showSuccess(player);
-                    missionHandler.completeMission(name, 3);
-                } else {
-                    // Action Bar con estado de ambos objetivos
-                    String raidStatus = raidDone ? ChatColor.GREEN + "✔" : ChatColor.RED + "✖";
-                    String appleStatus = (apples >= 15 ? ChatColor.GREEN : ChatColor.of("#FFA07A")) + String.valueOf(apples) + "/15";
+            if (raidsDone >= 1 && apples >= 32) {
+                successNotification.showSuccess(player);
+                missionHandler.completeMission(player, 3);
+            } else {
+                String raidStatus = (raidsDone >= 1 ? ChatColor.GREEN : ChatColor.of("#FFA07A")) + String.valueOf(raidsDone) + "/1";
+                String appleStatus = (apples >= 32 ? ChatColor.GREEN : ChatColor.of("#FFA07A")) + String.valueOf(apples) + "/32";
 
-                    String msg = ChatColor.GOLD + "۞ " +
-                            ChatColor.of("#FFCC99") + "Raid: " + raidStatus +
-                            ChatColor.GRAY + " | " +
-                            ChatColor.of("#FFCC99") + "Manzanas: " + appleStatus;
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Raids: " + raidStatus +
+                        ChatColor.GRAY + " | " +
+                        ChatColor.of("#FFCC99") + "Manzanas: " + appleStatus;
 
-                    actionBarHandler.sendActionBar(player, msg);
-                }
-            } catch (IOException e) { e.printStackTrace(); }
+                actionBarHandler.sendActionBar(player, msg);
+            }
         }
     }
 }

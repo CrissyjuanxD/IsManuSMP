@@ -2,32 +2,36 @@ package Events.MissionSystem;
 
 import Handlers.ActionBarHandler;
 import TitleListener.SuccessNotification;
+import items.CustomPotions;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Creeper;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.Ghast;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class Mission26 implements Mission, Listener {
     private final JavaPlugin plugin;
     private final MissionHandler missionHandler;
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
+
+    private final Set<Material> requiredBlocks = new LinkedHashSet<>(Arrays.asList(
+            Material.IRON_BLOCK,
+            Material.GOLD_BLOCK,
+            Material.EMERALD_BLOCK,
+            Material.DIAMOND_BLOCK,
+            Material.COPPER_BLOCK,
+            Material.NETHERITE_BLOCK
+    ));
 
     public Mission26(JavaPlugin plugin, MissionHandler missionHandler) {
         this.plugin = plugin;
@@ -37,106 +41,97 @@ public class Mission26 implements Mission, Listener {
     }
 
     @Override
-    public String getName() {
-        return "Cazador Experimentado";
-    }
+    public String getName() { return "Ve a tocar pasto"; }
 
     @Override
-    public String getDescription() {
-        return "Mata 15 Spectral Ghasts y 15 Spectral Creepers.";
-    }
+    public String getDescription() { return "Rompe bloques de Hierro, Oro,\nEsmeralda, Diamante, Cobre y\nNetherite con Fatiga Minera III."; }
 
     @Override
-    public int getMissionNumber() {
-        return 26;
-    }
+    public int getMissionNumber() { return 26; }
 
     @Override
     public List<ItemStack> getRewards() {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(12);
-        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 32);
-        ItemStack diamonds = new ItemStack(Material.SHULKER_SHELL, 10);
+        coins.setAmount(16);
+        ItemStack potion = CustomPotions.getHasteIIIPotion();
+        potion.setAmount(1);
+        ItemStack diamondBlocks = new ItemStack(Material.DIAMOND_BLOCK, 10);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
 
-
-        ItemStack xpFill = new ItemStack(Material.GOLD_INGOT, 2);
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
+            if (i == 10 || i == 11 || i == 12) {
+                rewards.add(potion.clone());
+            }
+            else if (i == 14) {
                 rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
+            }
+            else if (i == 16) {
+                rewards.add(diamondBlocks);
+            }
+            else {
                 rewards.add(xpFill.clone());
             }
         }
-
         return rewards;
     }
 
     @Override
-    public void initializePlayerData(String playerName) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        data.set("players." + playerName + ".missions.26.ghasts_killed", 0);
-        data.set("players." + playerName + ".missions.26.creepers_killed", 0);
-        try { data.save(missionHandler.getMissionFile()); } catch (IOException e) { e.printStackTrace(); }
-    }
+    public void initializePlayerData(String playerName) {}
 
     @Override
     public void checkCompletion(String playerName) {}
 
+    public Set<Material> getRequiredBlocks() { return requiredBlocks; }
+
     @EventHandler
-    public void onDeath(EntityDeathEvent event) {
-        if (!missionHandler.isMissionActive(26)) return;
+    public void onBlockBreak(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        if (!requiredBlocks.contains(block.getType())) return;
 
-        Entity entity = event.getEntity();
-        Player killer = event.getEntity().getKiller();
-        if (killer == null) return;
+        Player player = event.getPlayer();
+        if (!missionHandler.isMissionActive(player, 26)) return;
 
-        // Detectar si es custom mob usando las Keys de tus clases
-        boolean isSpectralCreeper = entity instanceof Creeper &&
-                entity.getPersistentDataContainer().has(new NamespacedKey(plugin, "ender_creeper"), PersistentDataType.BYTE);
+        PotionEffect effect = player.getPotionEffect(PotionEffectType.MINING_FATIGUE);
+        if (effect != null && effect.getAmplifier() >= 2) {
 
-        boolean isSpectralGhast = entity instanceof Ghast &&
-                entity.getPersistentDataContainer().has(new NamespacedKey(plugin, "ender_ghast"), PersistentDataType.BYTE);
+            MissionData data = missionHandler.getData(player, 26);
+            if (data.isCompleted()) return;
 
-        if (!isSpectralCreeper && !isSpectralGhast) return;
+            String key = "broken_" + block.getType().name();
 
-        String name = killer.getName();
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        if (data.getBoolean("players." + name + ".missions.26.completed", false)) return;
+            if (!data.getProgressBool(key)) {
+                data.setProgressValue(key, true);
 
-        boolean updated = false;
-        int creepers = data.getInt("players." + name + ".missions.26.creepers_killed", 0);
-        int ghasts = data.getInt("players." + name + ".missions.26.ghasts_killed", 0);
-
-        if (isSpectralCreeper && creepers < 15) {
-            creepers++;
-            data.set("players." + name + ".missions.26.creepers_killed", creepers);
-            updated = true;
-        } else if (isSpectralGhast && ghasts < 15) {
-            ghasts++;
-            data.set("players." + name + ".missions.26.ghasts_killed", ghasts);
-            updated = true;
-        }
-
-        if (updated) {
-            try {
-                data.save(missionHandler.getMissionFile());
-                if (creepers >= 15 && ghasts >= 15) {
-                    successNotification.showSuccess(killer);
-                    missionHandler.completeMission(name, 26);
-                } else {
-                    String msg = ChatColor.GOLD + "۞ " +
-                            ChatColor.of("#FFCC99") + "S. Creepers: " + ChatColor.of("#FFA07A") + creepers + "/15" +
-                            ChatColor.GRAY + " | " +
-                            ChatColor.of("#FFCC99") + "S. Ghasts: " + ChatColor.of("#FFA07A") + ghasts + "/15";
-                    actionBarHandler.sendActionBar(killer, msg);
+                boolean all = true;
+                int count = 0;
+                for (Material m : requiredBlocks) {
+                    if (data.getProgressBool("broken_" + m.name())) {
+                        count++;
+                    } else {
+                        all = false;
+                    }
                 }
-            } catch (IOException e) { e.printStackTrace(); }
+
+                missionHandler.saveData(player, 26, data);
+
+                if (all) {
+                    successNotification.showSuccess(player);
+                    missionHandler.completeMission(player, 26);
+                } else {
+                    String blockName = block.getType().name().toLowerCase().replace("_", " ");
+                    blockName = blockName.substring(0, 1).toUpperCase() + blockName.substring(1);
+
+                    String msg = ChatColor.GOLD + "۞ " +
+                            ChatColor.of("#FFCC99") + "Roto: " + ChatColor.GREEN + blockName + " " +
+                            ChatColor.of("#FFA07A") + count +
+                            ChatColor.of("#FFE4B5") + "/" +
+                            ChatColor.of("#FFA07A") + requiredBlocks.size();
+                    actionBarHandler.sendActionBar(player, msg);
+                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 2f);
+                }
+            }
         }
     }
 }

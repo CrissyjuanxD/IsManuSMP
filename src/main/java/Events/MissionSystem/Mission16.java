@@ -2,23 +2,18 @@ package Events.MissionSystem;
 
 import Handlers.ActionBarHandler;
 import TitleListener.SuccessNotification;
+import items.CustomPotions;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.WitherSkeleton;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,92 +31,70 @@ public class Mission16 implements Mission, Listener {
     }
 
     @Override
-    public String getName() {
-        return "Cazador de Corruptos 2";
-    }
+    public String getName() { return "Estado en Descomposición"; }
 
     @Override
-    public String getDescription() {
-        return "Elimina a 20 Guardian Corrupted Skeletons.";
-    }
+    public String getDescription() { return "Derrota a 5 Withers."; }
 
     @Override
-    public int getMissionNumber() {
-        return 16;
-    }
+    public int getMissionNumber() { return 16; }
 
     @Override
     public List<ItemStack> getRewards() {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(7);
-        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 5);
-        ItemStack diamonds = new ItemStack(Material.NETHERITE_SCRAP, 10);
+        coins.setAmount(18);
+        ItemStack goldenApples = new ItemStack(Material.ENCHANTED_GOLDEN_APPLE, 7);
+        ItemStack potion = CustomPotions.getHasteIIIPotion();
+        potion.setAmount(1);
 
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
 
-        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 2);
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
-                rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
-                rewards.add(xpFill.clone());
-            }
+            if (i == 10 || i == 11 || i == 12) rewards.add(potion.clone());
+            else if (i == 14) rewards.add(goldenApples);
+            else if (i == 16) rewards.add(coins);
+            else rewards.add(xpFill.clone());
         }
-
         return rewards;
     }
 
     @Override
-    public void initializePlayerData(String playerName) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        data.set("players." + playerName + ".missions.16.skeletons_killed", 0);
-        try { data.save(missionHandler.getMissionFile()); } catch (IOException e) { e.printStackTrace(); }
-    }
+    public void initializePlayerData(String playerName) {}
 
     @Override
     public void checkCompletion(String playerName) {}
 
     @EventHandler
-    public void onDeath(EntityDeathEvent event) {
-        if (!missionHandler.isMissionActive(16)) return;
-        Entity entity = event.getEntity();
+    public void onEntityDeath(EntityDeathEvent event) {
+        if (event.getEntityType() != EntityType.WITHER) return;
+
         Player killer = event.getEntity().getKiller();
         if (killer == null) return;
 
-        // Detección usando la Key definida en tu clase GuardianCorruptedSkeleton
-        NamespacedKey key = new NamespacedKey(plugin, "guardian_corrupted_skeleton");
+        if (!missionHandler.isMissionActive(killer, 16)) return;
 
-        if (entity instanceof WitherSkeleton && entity.getPersistentDataContainer().has(key, PersistentDataType.BYTE)) {
+        MissionData data = missionHandler.getData(killer, 16);
+        if (data.isCompleted()) return;
 
-            String name = killer.getName();
-            FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-            if (data.getBoolean("players." + name + ".missions.16.completed", false)) return;
+        int killed = data.getProgressInt("withers_killed");
 
-            int killed = data.getInt("players." + name + ".missions.16.skeletons_killed", 0);
+        if (killed < 5) {
+            killed++;
+            data.setProgressValue("withers_killed", killed);
+            missionHandler.saveData(killer, 16, data);
 
-            if (killed < 20) {
-                killed++;
-                data.set("players." + name + ".missions.16.skeletons_killed", killed);
-
-                try {
-                    data.save(missionHandler.getMissionFile());
-                    if (killed >= 20) {
-                        successNotification.showSuccess(killer);
-                        missionHandler.completeMission(name, 16);
-                    } else {
-                        String msg = ChatColor.GOLD + "۞ " +
-                                ChatColor.of("#FFCC99") + "Guardian Skeleton: " +
-                                ChatColor.of("#FFA07A") + killed +
-                                ChatColor.of("#FFE4B5") + "/" +
-                                ChatColor.of("#FFA07A") + "20";
-                        actionBarHandler.sendActionBar(killer, msg);
-                    }
-                } catch (IOException e) { e.printStackTrace(); }
+            if (killed >= 5) {
+                successNotification.showSuccess(killer);
+                missionHandler.completeMission(killer, 16);
+            } else {
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Withers: " +
+                        ChatColor.of("#FFA07A") + killed +
+                        ChatColor.of("#FFE4B5") + "/" +
+                        ChatColor.of("#FFA07A") + "5";
+                actionBarHandler.sendActionBar(killer, msg);
             }
         }
     }

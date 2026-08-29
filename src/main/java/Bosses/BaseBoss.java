@@ -1,7 +1,7 @@
 package Bosses;
 
-import org.bukkit.Bukkit;
 import net.md_5.bungee.api.ChatColor;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.boss.BarColor;
@@ -25,6 +25,7 @@ public abstract class BaseBoss {
 
     // ---- Sistema de Jugadores ----
     protected final Set<UUID> currentPlayers = new HashSet<>();
+    protected final Set<UUID> attackers = new HashSet<>();
 
     // ---- Sistema de Arena ----
     protected AreaZone areaZone;
@@ -71,7 +72,7 @@ public abstract class BaseBoss {
                     cleanupBars();
 
                     if (entity.getHealth() <= 0 || entity.isDead()) {
-                        onDeath(); // Ejecuta lógica de muerte (drops, borrar key)
+                        onDeath();
                         sendDeathMessage();
                     }
                     else {
@@ -86,14 +87,12 @@ public abstract class BaseBoss {
 
                 // 3. Hibernación
                 if (currentPlayers.isEmpty()) {
-                    // Si no hay nadie, hibernar
                     if (!hibernating) {
                         enterHibernation();
                     }
                 } else {
-                    // Si hay gente...
                     if (hibernating) {
-                        exitHibernation(); // Despertar si estaba dormido
+                        exitHibernation();
                     }
 
                     if (entity.isInvulnerable()) {
@@ -124,10 +123,6 @@ public abstract class BaseBoss {
         entity.setInvulnerable(true);
         entity.setSilent(true);
 
-        // Opcional: Curar al máximo o reiniciar al volver?
-        // Por ahora solo lo pausamos.
-
-        // Limpiamos bossbars para que no queden flotando si el jugador se fue lejos
         mainBar.removeAll();
         staticBar.removeAll();
     }
@@ -138,7 +133,6 @@ public abstract class BaseBoss {
         entity.setInvulnerable(false);
         entity.setSilent(false);
 
-        // Re-agregamos jugadores a la barra
         for (UUID uuid : currentPlayers) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null) {
@@ -162,7 +156,6 @@ public abstract class BaseBoss {
     }
 
     private void updateBars() {
-        // Solo actualizamos el progreso, la visibilidad se maneja en updatePlayers/Hibernation
         double max = entity.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getBaseValue();
         double hp = Math.max(0, entity.getHealth());
 
@@ -195,7 +188,7 @@ public abstract class BaseBoss {
 
             if (inside && !already) {
                 currentPlayers.add(player.getUniqueId());
-                if (!hibernating) { // Solo mostrar barra si boss está activo
+                if (!hibernating) {
                     mainBar.addPlayer(player);
                     staticBar.addPlayer(player);
                 }
@@ -218,6 +211,12 @@ public abstract class BaseBoss {
         }
     }
 
+    public void addAttacker(Player p) {
+        if (p.getGameMode() == org.bukkit.GameMode.SURVIVAL || p.getGameMode() == org.bukkit.GameMode.ADVENTURE) {
+            attackers.add(p.getUniqueId());
+        }
+    }
+
     public void toggleDebug(Player player) {
         if (debugPlayers.contains(player.getUniqueId())) {
             debugPlayers.remove(player.getUniqueId());
@@ -234,7 +233,6 @@ public abstract class BaseBoss {
 
         debugTick++;
 
-        // cada 10 ticks dibujamos borde (aumentado para reducir lag visual con el nuevo sistema de partículas denso)
         if (debugTick % 10 == 0) {
             for (UUID id : debugPlayers) {
                 Player p = Bukkit.getPlayer(id);
@@ -244,7 +242,6 @@ public abstract class BaseBoss {
             }
         }
 
-        // avisos entrada/salida
         for (UUID id : debugPlayers) {
             Player p = Bukkit.getPlayer(id);
             if (p == null) continue;
@@ -273,14 +270,16 @@ public abstract class BaseBoss {
         if (currentPlayers.isEmpty()) return;
 
         List<String> names = currentPlayers.stream()
-                .map(id -> Bukkit.getPlayer(id) != null ? Bukkit.getPlayer(id).getName() : "")
+                .map(id -> Bukkit.getPlayer(id))
+                .filter(p -> p != null && (p.getGameMode() == org.bukkit.GameMode.SURVIVAL || p.getGameMode() == org.bukkit.GameMode.ADVENTURE))
+                .map(Player::getName)
                 .toList();
 
-        // Estilos
+        if (names.isEmpty()) return;
+
         String prefix = ChatColor.of("#88F1BC") + "" + ChatColor.BOLD + "\u06de";
         String colorText = ChatColor.of("#74A3D2").toString();
         String colorName = ChatColor.of("#76C6E8") + "" + ChatColor.BOLD;
-        // Boss Title suele tener color propio, añadimos negrita
         String bossName = ChatColor.BOLD + getBossTitle();
 
         String msg;
@@ -296,18 +295,24 @@ public abstract class BaseBoss {
         Bukkit.broadcastMessage(msg);
     }
 
+    // ===========================
+    //      MENSAJES GLOBALES
+    // ===========================
     private void sendDeathMessage() {
-        List<String> names = currentPlayers.stream()
-                .map(id -> Bukkit.getPlayer(id) != null ? Bukkit.getPlayer(id).getName() : "")
+        Set<UUID> involvedUUIDs = new HashSet<>(currentPlayers);
+        involvedUUIDs.addAll(attackers);
+
+        List<String> names = involvedUUIDs.stream()
+                .map(id -> Bukkit.getPlayer(id))
+                .filter(p -> p != null && (p.getGameMode() == org.bukkit.GameMode.SURVIVAL || p.getGameMode() == org.bukkit.GameMode.ADVENTURE))
+                .map(Player::getName)
                 .toList();
 
         if (names.isEmpty()) return;
 
-        // Estilos
         String prefix = ChatColor.of("#F2E66A") + "" + ChatColor.BOLD + "\u06de";
         String colorText = ChatColor.of("#F5A62E").toString();
         String colorName = ChatColor.of("#F55D7A") + "" + ChatColor.BOLD;
-        // Boss Title suele tener color propio, añadimos negrita
         String bossName = ChatColor.BOLD + getBossTitle();
 
         String msg;

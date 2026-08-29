@@ -6,8 +6,6 @@ import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -33,54 +31,36 @@ public class Mission27 implements Mission, Listener {
     }
 
     @Override
-    public String getName() {
-        return "Día de los Furros";
-    }
+    public String getName() { return "Día del Furro"; }
 
     @Override
-    public String getDescription() {
-        return "Elimina a IsManuPlay en combate.";
-    }
+    public String getDescription() { return "Mata al naco de IsManuPlay"; }
 
     @Override
-    public int getMissionNumber() {
-        return 27;
-    }
+    public int getMissionNumber() { return 27; }
 
     @Override
     public List<ItemStack> getRewards() {
         List<ItemStack> rewards = new ArrayList<>();
-
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(40);
-        ItemStack goldenApples = new ItemStack(Material.ENCHANTED_GOLDEN_APPLE, 10);
+        coins.setAmount(16);
+        ItemStack goldenApples = new ItemStack(Material.ENCHANTED_GOLDEN_APPLE, 5);
 
         ItemStack specificHead = new ItemStack(Material.PLAYER_HEAD, 1);
-        if (specificHead.getItemMeta() instanceof SkullMeta) {
-            SkullMeta meta = (SkullMeta) specificHead.getItemMeta();
-
+        if (specificHead.getItemMeta() instanceof SkullMeta meta) {
             meta.setOwningPlayer(Bukkit.getOfflinePlayer("IsManuPlay"));
-
             meta.setDisplayName("§cCabeza de IsManuPlay");
-
             specificHead.setItemMeta(meta);
         }
 
         ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 5);
 
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
-                rewards.add(coins);
-            } else if (i == 15) {
-                // Añadimos la cabeza configurada
-                rewards.add(specificHead);
-            } else {
-                rewards.add(xpFill.clone());
-            }
+            if (i == 11) rewards.add(goldenApples);
+            else if (i == 13) rewards.add(coins);
+            else if (i == 15) rewards.add(specificHead);
+            else rewards.add(xpFill.clone());
         }
-
         return rewards;
     }
 
@@ -92,25 +72,22 @@ public class Mission27 implements Mission, Listener {
 
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent event) {
-        if (!missionHandler.isMissionActive(27)) return;
-
         Player victim = event.getEntity();
         Player killer = victim.getKiller();
 
-        // Verificar si la víctima es IsManuPlay (ignorando mayúsculas/minúsculas)
         if (victim.getName().equalsIgnoreCase("IsManuPlay")) {
-            if (killer != null) {
-                // Verificar que no se haya matado a sí mismo
-                if (killer.equals(victim)) return;
+            if (killer != null && !killer.equals(victim)) {
 
-                String killerName = killer.getName();
-                FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
+                if (!missionHandler.isMissionActive(killer, 27)) return;
 
-                if (!data.getBoolean("players." + killerName + ".missions.27.completed", false)) {
+                MissionData data = missionHandler.getData(killer, 27);
+
+                if (!data.isCompleted()) {
                     successNotification.showSuccess(killer);
-                    String msg = ChatColor.GOLD + "۞ " + ChatColor.RED + "¡LEYENDA DERROTADA!";
+                    String msg = ChatColor.GOLD + "۞ " + ChatColor.RED + "¡Furro DERROTADO!";
                     actionBarHandler.sendActionBar(killer, msg);
-                    missionHandler.completeMission(killerName, 27);
+
+                    missionHandler.completeMission(killer, 27);
                 }
             }
         }

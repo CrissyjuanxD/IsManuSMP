@@ -2,25 +2,36 @@ package items;
 
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemRarity;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.Bukkit;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class EconomyItems {
 
+    // --- METODO CLAVE: HACE QUE EL ITEM NO SE PUEDA APILAR ---
+    private static void makeUnstackable(ItemMeta meta) {
+        // Obtenemos o creamos una key. Usamos "is_manu" como el namespace genérico de tu plugin
+        NamespacedKey unstackableKey = new NamespacedKey("is_manu", "unstackable_id");
+        // Le metemos un UUID aleatorio. Como cada item tendrá uno distinto, Minecraft se negará a juntarlos.
+        meta.getPersistentDataContainer().set(unstackableKey, PersistentDataType.STRING, UUID.randomUUID().toString());
+    }
+
     public static ItemStack createVithiumCoin() {
-        ItemStack item = new ItemStack(Material.GOLD_NUGGET);
+        ItemStack item = new ItemStack(Material.SUNFLOWER);
         ItemMeta meta = item.getItemMeta();
 
-        // Nombre del item con formato JSON-like
         meta.setDisplayName(ChatColor.of("#FFCC80") + "ManuCoins " + ChatColor.GRAY + "۞");
         meta.setCustomModelData(2000);
 
@@ -41,10 +52,9 @@ public class EconomyItems {
     }
 
     public static ItemStack createVithiumToken() {
-        ItemStack item = new ItemStack(Material.COPPER_NUGGET);
+        ItemStack item = new ItemStack(Material.GOLD_NUGGET);
         ItemMeta meta = item.getItemMeta();
 
-        // Nombre del item con formato JSON-like
         meta.setDisplayName(ChatColor.of("#3a86b6") + "ManuFichas " + ChatColor.GRAY + "۞");
         meta.setCustomModelData(2010);
 
@@ -62,12 +72,34 @@ public class EconomyItems {
         return item;
     }
 
-    public static ItemStack createNormalMochila() {
-        ItemStack item = new ItemStack(Material.LEATHER_HORSE_ARMOR);
+    public static ItemStack createBloodFragment() {
+        ItemStack item = new ItemStack(Material.COPPER_NUGGET);
         ItemMeta meta = item.getItemMeta();
 
-        meta.setDisplayName(ChatColor.of("#ffffcc") + "" + ChatColor.BOLD + "Mochila Nivel 1");
+        meta.setDisplayName(ChatColor.of("#d46868") + "Fragmento de " + ChatColor.of("#d46868") + ChatColor.BOLD + "BloodMoon");
+        meta.setCustomModelData(2060);
+
+        List<String> lore = new ArrayList<>();
+        lore.add("");
+        lore.add(ChatColor.GRAY + "> " + ChatColor.of("#b86b42") + "Este fragmento lo puedes");
+        lore.add(ChatColor.of("#b86b42") + "cambiar por " + ChatColor.of("#ffcc80") + "ManuCoins " + ChatColor.GRAY + "۞");
+        lore.add(ChatColor.of("#b86b42") + "en la tienda de Monedas.");
+
+        meta.setLore(lore);
+        meta.setRarity(ItemRarity.EPIC);
+        meta.addEnchant(Enchantment.UNBREAKING, 1, true);
+        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    public static ItemStack createNormalMochila() {
+        ItemStack item = new ItemStack(Material.ECHO_SHARD);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.GREEN + "" + ChatColor.BOLD + "Mochila Nivel 1");
         meta.setCustomModelData(2020);
+        meta.setItemModel(NamespacedKey.minecraft("lime_bundle"));
 
         List<String> lore = new ArrayList<>();
         lore.add(" ");
@@ -79,16 +111,20 @@ public class EconomyItems {
         meta.setRarity(ItemRarity.EPIC);
         meta.addEnchant(Enchantment.UNBREAKING, 1, true);
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+
+        makeUnstackable(meta); // <--- AÑADIDO AQUI
+
         item.setItemMeta(meta);
         return item;
     }
 
     public static ItemStack createGreenMochila() {
-        ItemStack item = new ItemStack(Material.COPPER_HORSE_ARMOR);
+        ItemStack item = new ItemStack(Material.ECHO_SHARD);
         ItemMeta meta = item.getItemMeta();
 
-        meta.setDisplayName(ChatColor.GREEN + "" + ChatColor.BOLD + "Mochila Nivel 2");
+        meta.setDisplayName(ChatColor.BLUE + "" + ChatColor.BOLD + "Mochila Nivel 2");
         meta.setCustomModelData(2021);
+        meta.setItemModel(NamespacedKey.minecraft("blue_bundle"));
 
         List<String> lore = new ArrayList<>();
         lore.add(" ");
@@ -100,16 +136,20 @@ public class EconomyItems {
         meta.setRarity(ItemRarity.EPIC);
         meta.addEnchant(Enchantment.UNBREAKING, 1, true);
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+
+        makeUnstackable(meta); // <--- AÑADIDO AQUI
+
         item.setItemMeta(meta);
         return item;
     }
 
     public static ItemStack createRedMochila() {
-        ItemStack item = new ItemStack(Material.IRON_HORSE_ARMOR);
+        ItemStack item = new ItemStack(Material.ECHO_SHARD);
         ItemMeta meta = item.getItemMeta();
 
-        meta.setDisplayName(ChatColor.RED + "" + ChatColor.BOLD + "Mochila Nivel 3");
+        meta.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "Mochila Nivel 3");
         meta.setCustomModelData(2022);
+        meta.setItemModel(NamespacedKey.minecraft("orange_bundle"));
 
         List<String> lore = new ArrayList<>();
         lore.add(" ");
@@ -121,16 +161,20 @@ public class EconomyItems {
         meta.setRarity(ItemRarity.EPIC);
         meta.addEnchant(Enchantment.UNBREAKING, 1, true);
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+
+        makeUnstackable(meta); // <--- AÑADIDO AQUI
+
         item.setItemMeta(meta);
         return item;
     }
 
     public static ItemStack createBlueMochila() {
-        ItemStack item = new ItemStack(Material.GOLDEN_HORSE_ARMOR);
+        ItemStack item = new ItemStack(Material.ECHO_SHARD);
         ItemMeta meta = item.getItemMeta();
 
-        meta.setDisplayName(ChatColor.BLUE + "" + ChatColor.BOLD + "Mochila Nivel 4");
+        meta.setDisplayName(ChatColor.RED + "" + ChatColor.BOLD + "Mochila Nivel 4");
         meta.setCustomModelData(2023);
+        meta.setItemModel(NamespacedKey.minecraft("red_bundle"));
 
         List<String> lore = new ArrayList<>();
         lore.add(" ");
@@ -142,16 +186,20 @@ public class EconomyItems {
         meta.setRarity(ItemRarity.EPIC);
         meta.addEnchant(Enchantment.UNBREAKING, 1, true);
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+
+        makeUnstackable(meta); // <--- AÑADIDO AQUI
+
         item.setItemMeta(meta);
         return item;
     }
 
     public static ItemStack createPurpleMochila() {
-        ItemStack item = new ItemStack(Material.DIAMOND_HORSE_ARMOR);
+        ItemStack item = new ItemStack(Material.ECHO_SHARD);
         ItemMeta meta = item.getItemMeta();
 
         meta.setDisplayName(ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "Mochila Nivel 5");
         meta.setCustomModelData(2024);
+        meta.setItemModel(NamespacedKey.minecraft("purple_bundle"));
 
         List<String> lore = new ArrayList<>();
         lore.add(" ");
@@ -163,9 +211,13 @@ public class EconomyItems {
         meta.setRarity(ItemRarity.EPIC);
         meta.addEnchant(Enchantment.UNBREAKING, 1, true);
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+
+        makeUnstackable(meta); // <--- AÑADIDO AQUI
+
         item.setItemMeta(meta);
         return item;
     }
+
 
     public static ItemStack createEnderBag() {
         ItemStack item = new ItemStack(Material.ENDERMITE_SPAWN_EGG);
@@ -287,8 +339,11 @@ public class EconomyItems {
         return item;
     }
 
+    public static boolean isMaterialMochila(org.bukkit.Material material) {
+        return material == Material.ECHO_SHARD;
+    }
+
     public static void applyPanicAppleEffects(Player player) {
-        // Efectos de 5 segundos (100 ticks)
         player.addPotionEffect(new PotionEffect(
                 PotionEffectType.ABSORPTION,
                 100,

@@ -11,97 +11,73 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.io.File;
 import java.io.IOException;
 
-    public class DayHandler {
-        private final JavaPlugin plugin;
-        private int currentDay = 1;
-        private BukkitRunnable dayTask;
-        private DayOneChanges dayOneChanges;
-        private DayTwoChanges dayTwoChange;
-        private DayFourChanges dayFourChanges;
-        private DayFiveChanges dayFiveChanges;
-    
-        public DayHandler(JavaPlugin plugin) {
-            this.plugin = plugin;
-            dayOneChanges = new DayOneChanges(plugin, this);
-            dayTwoChange = new DayTwoChanges(plugin, this);
-            dayFourChanges = new DayFourChanges(plugin,this);
-            dayFiveChanges = new DayFiveChanges(plugin,this);
-            loadDayData();
-            applyCurrentDayChanges();
+public class DayHandler {
+    private final JavaPlugin plugin;
+    private int currentDay = 1;
+    private BukkitRunnable dayTask;
+    private DayOneChanges dayOneChanges;
+
+    public DayHandler(JavaPlugin plugin) {
+        this.plugin = plugin;
+        dayOneChanges = new DayOneChanges(plugin, this);
+        loadDayData();
+        applyCurrentDayChanges();
+    }
+
+    // Iniciar o reiniciar el temporizador de día
+
+    public void advanceDay() {
+        currentDay++;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.sendMessage(ChatColor.GOLD + "¡Es el día " + currentDay + "!");
         }
+        applyCurrentDayChanges();
+        saveDayData();
+    }
 
-        // Iniciar o reiniciar el temporizador de día
+    public void changeDay(int day) {
+        revertCurrentDayChanges();
+        currentDay = day;
 
-        public void advanceDay() {
-            currentDay++;
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                player.sendMessage(ChatColor.GOLD + "¡Es el día " + currentDay + "!");
-            }
-            applyCurrentDayChanges();
-            saveDayData();
-        }
-
-        public void changeDay(int day) {
-            revertCurrentDayChanges();
-            currentDay = day;
-
-            applyCurrentDayChanges();
-            saveDayData();
-        }
+        applyCurrentDayChanges();
+        saveDayData();
+    }
 
 
-        private void applyCurrentDayChanges() {
-            if (currentDay >= 1) {
-                dayOneChanges.apply();
-            }
-            if (currentDay >= 2) {
-                dayTwoChange.apply();
-            }
-            if (currentDay >= 4) {
-                dayFourChanges.apply();
-            }
-            if (currentDay >= 5) {
-                dayFiveChanges.apply();
-            }
-        }
-
-        private void revertCurrentDayChanges() {
-            if (currentDay < 5) {
-                dayFiveChanges.revert();
-            }
-            if (currentDay < 4) {
-                dayFourChanges.revert();
-            }
-            if (currentDay < 2) {
-                dayTwoChange.revert();
-            }
-            if (currentDay < 1) {
-                dayOneChanges.revert();
-            }
-        }
-
-        public int getCurrentDay() {
-            return currentDay;
-        }
-
-        private void saveDayData() {
-            try {
-                File file = new File(plugin.getDataFolder(), "DayandStorm.yml");
-                YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-
-                config.set("DiaActual", currentDay);
-
-                config.save(file);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        private void loadDayData() {
-            File file = new File(plugin.getDataFolder(), "DayandStorm.yml");
-            if (file.exists()) {
-                YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-                currentDay = config.getInt("DiaActual", 1);
-            }
+    private void applyCurrentDayChanges() {
+        if (currentDay >= 1) {
+            dayOneChanges.apply();
         }
     }
+
+    private void revertCurrentDayChanges() {
+        if (currentDay < 1) {
+            dayOneChanges.revert();
+        }
+    }
+
+    public int getCurrentDay() {
+        return currentDay;
+    }
+
+    private void saveDayData() {
+        try {
+            File file = new File(plugin.getDataFolder(), "DayandStorm.yml");
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+
+            config.set("DiaActual", currentDay);
+
+            config.save(file);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadDayData() {
+        File file = new File(plugin.getDataFolder(), "DayandStorm.yml");
+        if (file.exists()) {
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            currentDay = config.getInt("DiaActual", 1);
+        }
+    }
+}

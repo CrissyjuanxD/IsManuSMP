@@ -2,13 +2,11 @@ package Events.MissionSystem;
 
 import Handlers.ActionBarHandler;
 import TitleListener.SuccessNotification;
+import items.CustomPotions;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.block.Biome;
-import org.bukkit.block.Block;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -16,7 +14,6 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,8 +23,6 @@ public class Mission19 implements Mission, Listener {
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
 
-    private static final int REQUIRED_AMOUNT = 20;
-
     public Mission19(JavaPlugin plugin, MissionHandler missionHandler) {
         this.plugin = plugin;
         this.missionHandler = missionHandler;
@@ -36,97 +31,78 @@ public class Mission19 implements Mission, Listener {
     }
 
     @Override
-    public String getName() {
-        return "Jugando a ser músico";
-    }
+    public String getName() { return "Vida Opaca"; }
 
     @Override
-    public String getDescription() {
-        return "Rompe 20 chilladores (Sculk Shriekers) en el bioma Deep Dark.";
-    }
+    public String getDescription() { return "Rompe 35 Creaking Hearts en un Pale Garden."; }
 
     @Override
-    public int getMissionNumber() {
-        return 19;
-    }
+    public int getMissionNumber() { return 19; }
 
     @Override
     public List<ItemStack> getRewards() {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(8);
-        ItemStack goldenApples = new ItemStack(Material.ENCHANTED_GOLDEN_APPLE, 3);
-        ItemStack diamonds = new ItemStack(Material.ENDER_PEARL, 16);
+        coins.setAmount(14);
+        ItemStack potion = CustomPotions.getSplashAbsorptionXPotion();
+        potion.setAmount(1);
+        ItemStack gapple = new ItemStack(Material.GOLDEN_APPLE, 20);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
 
-
-        ItemStack xpFill = new ItemStack(Material.ECHO_SHARD, 1);
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
+            if (i == 10 || i == 11 || i == 12) {
+                rewards.add(potion.clone());
+            }
+            else if (i == 14) {
                 rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
+            }
+            else if (i == 16) {
+                rewards.add(gapple);
+            }
+            else {
                 rewards.add(xpFill.clone());
             }
         }
-
         return rewards;
     }
 
     @Override
-    public void initializePlayerData(String playerName) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        data.set("players." + playerName + ".missions.19.shriekers_broken", 0);
-        try { data.save(missionHandler.getMissionFile()); } catch (IOException e) { e.printStackTrace(); }
-    }
+    public void initializePlayerData(String playerName) {}
 
     @Override
     public void checkCompletion(String playerName) {}
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
-        if (!missionHandler.isMissionActive(19)) return;
-
-        Block block = event.getBlock();
-
-        // Verificar Material
-        if (block.getType() != Material.SCULK_SHRIEKER) return;
-
-        // Verificar Bioma (Deep Dark)
-        if (block.getBiome() != Biome.DEEP_DARK) return;
+        if (event.getBlock().getType() != Material.CREAKING_HEART) return;
+        if (event.getBlock().getBiome() != Biome.PALE_GARDEN) return;
 
         Player player = event.getPlayer();
-        String name = player.getName();
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
+        if (!missionHandler.isMissionActive(player, 19)) return;
 
-        if (data.getBoolean("players." + name + ".missions.19.completed", false)) return;
+        MissionData data = missionHandler.getData(player, 19);
+        if (data.isCompleted()) return;
 
-        int broken = data.getInt("players." + name + ".missions.19.shriekers_broken", 0);
+        int broken = data.getProgressInt("hearts_broken");
 
-        if (broken < REQUIRED_AMOUNT) {
+        if (broken < 35) {
             broken++;
-            data.set("players." + name + ".missions.19.shriekers_broken", broken);
+            data.setProgressValue("hearts_broken", broken);
+            event.setDropItems(false);
+            missionHandler.saveData(player, 19, data);
 
-            try {
-                data.save(missionHandler.getMissionFile());
-
-                event.setDropItems(false);
-
-                if (broken >= REQUIRED_AMOUNT) {
-                    successNotification.showSuccess(player);
-                    missionHandler.completeMission(name, 19);
-                } else {
-                    String msg = ChatColor.GOLD + "۞ " +
-                            ChatColor.of("#FFCC99") + "Chilladores: " +
-                            ChatColor.of("#FFA07A") + broken +
-                            ChatColor.of("#FFE4B5") + "/" +
-                            ChatColor.of("#FFA07A") + REQUIRED_AMOUNT;
-                    actionBarHandler.sendActionBar(player, msg);
-                }
-            } catch (IOException e) { e.printStackTrace(); }
+            if (broken >= 35) {
+                successNotification.showSuccess(player);
+                missionHandler.completeMission(player, 19);
+            } else {
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Creaking Hearts: " +
+                        ChatColor.of("#FFA07A") + broken +
+                        ChatColor.of("#FFE4B5") + "/" +
+                        ChatColor.of("#FFA07A") + "35";
+                actionBarHandler.sendActionBar(player, msg);
+            }
         }
     }
 }

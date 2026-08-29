@@ -13,7 +13,7 @@ import java.util.List;
 
 public class PVPCommand implements TabCompleter, CommandExecutor {
     private final PVPAnimation pvpAnimation;
-    private static final List<String> COMMANDS = Arrays.asList("activate", "deactivate");
+    private static final List<String> COMMANDS = Arrays.asList("activate", "deactivate", "debug");
 
     public PVPCommand(PVPAnimation pvpAnimation) {
         this.pvpAnimation = pvpAnimation;
@@ -26,15 +26,9 @@ public class PVPCommand implements TabCompleter, CommandExecutor {
         }
 
         if (args.length != 1) {
-            sender.sendMessage("§cUso: /pvp <activate|deactivate>");
+            sender.sendMessage("§cUso: /pvp <activate|deactivate|debug>");
             return true;
         }
-
-        if (!sender.hasPermission("plugin.pvp.toggle")) {
-            sender.sendMessage("§cNo tienes permiso para usar este comando.");
-            return true;
-        }
-
 
         String action = args[0].toLowerCase();
 
@@ -44,8 +38,9 @@ public class PVPCommand implements TabCompleter, CommandExecutor {
                     sender.sendMessage("§cEl PVP ya está activado!");
                     return true;
                 }
-                pvpAnimation.togglePVP(true);
-                sender.sendMessage("§aPVP activado correctamente!");
+                // Activación Manual
+                pvpAnimation.togglePVP(true, true);
+                sender.sendMessage("§aPVP activado manualmente. No se desactivará automáticamente.");
                 break;
 
             case "deactivate":
@@ -53,12 +48,18 @@ public class PVPCommand implements TabCompleter, CommandExecutor {
                     sender.sendMessage("§cEl PVP ya está desactivado!");
                     return true;
                 }
-                pvpAnimation.togglePVP(false);
-                sender.sendMessage("§aPVP desactivado correctamente!");
+                // Desactivación Manual
+                pvpAnimation.togglePVP(false, true);
+                sender.sendMessage("§aPVP desactivado manualmente. El contador de 2 horas se ha reiniciado.");
+                break;
+
+            case "debug":
+                // Muestra la información de debug
+                sender.sendMessage(pvpAnimation.getDebugInfo());
                 break;
 
             default:
-                sender.sendMessage("§cArgumento inválido. Usa /pvp <activate|deactivate>");
+                sender.sendMessage("§cArgumento inválido. Usa /pvp <activate|deactivate|debug>");
                 return true;
         }
 

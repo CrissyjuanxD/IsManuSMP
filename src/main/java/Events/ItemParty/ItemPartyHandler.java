@@ -1,7 +1,7 @@
 package Events.ItemParty;
 
 import Commands.TiempoCommand;
-import TitleListener.RuletaAnimation;
+import TitleListener.EventoAnimation;
 import items.ItemsPartyRecolect;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -15,6 +15,7 @@ import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Entity;
@@ -33,7 +34,10 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.scoreboard.*;
+import org.bukkit.scoreboard.DisplaySlot;
+import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,7 +48,7 @@ public class ItemPartyHandler implements Listener {
 
     private final JavaPlugin plugin;
     private final TiempoCommand tiempoCommand;
-    private final RuletaAnimation ruletaAnimation;
+    private final EventoAnimation ruletaAnimation;
     private final ItemsPartyRecolect partyItems;
     private long lastScoreUpdate = 0L;
 
@@ -54,6 +58,7 @@ public class ItemPartyHandler implements Listener {
     private String collectionTarget;
     private String eventDuration;
     private int safePlayers;
+    private Scoreboard eventScoreboard;
 
     private final Map<String, Integer> playerItems = new LinkedHashMap<>();
     private final Map<String, Long> playerTimestamp = new HashMap<>();
@@ -71,7 +76,7 @@ public class ItemPartyHandler implements Listener {
     public ItemPartyHandler(JavaPlugin plugin, TiempoCommand tiempoCommand) {
         this.plugin = plugin;
         this.tiempoCommand = tiempoCommand;
-        this.ruletaAnimation = new RuletaAnimation(plugin);
+        this.ruletaAnimation = new EventoAnimation(plugin);
         this.partyItems = new ItemsPartyRecolect(plugin);
         this.KEY_ORIGIN = new NamespacedKey(plugin, "itemparty_origin");
         this.KEY_COUNTED = new NamespacedKey(plugin, "itemparty_counted");
@@ -101,29 +106,62 @@ public class ItemPartyHandler implements Listener {
 
     public void reloadConfig() { loadConfig(); }
 
+    private void syncTeamsToEventScoreboard() {
+        if (eventScoreboard == null) return;
+        Scoreboard mainBoard = Bukkit.getScoreboardManager().getMainScoreboard();
+
+        for (Team mainTeam : mainBoard.getTeams()) {
+            Team newTeam = eventScoreboard.getTeam(mainTeam.getName());
+            if (newTeam == null) {
+                newTeam = eventScoreboard.registerNewTeam(mainTeam.getName());
+            }
+            newTeam.setPrefix(mainTeam.getPrefix());
+            newTeam.setSuffix(mainTeam.getSuffix());
+            newTeam.setColor(mainTeam.getColor());
+            newTeam.setOption(Team.Option.NAME_TAG_VISIBILITY, mainTeam.getOption(Team.Option.NAME_TAG_VISIBILITY));
+            newTeam.setOption(Team.Option.COLLISION_RULE, mainTeam.getOption(Team.Option.COLLISION_RULE));
+
+            for (String entry : mainTeam.getEntries()) {
+                if (!newTeam.hasEntry(entry)) {
+                    newTeam.addEntry(entry);
+                }
+            }
+        }
+    }
+
     public void iniciarEvento() {
         if (eventoActivo) { Bukkit.broadcastMessage("§c¡El evento ya está activo!"); return; }
-        if (Bukkit.getOnlinePlayers().size() < 2) {
-            Bukkit.broadcastMessage("§c¡Se necesitan más jugadores para iniciar el evento!");
+
+        List<Player> jugadoresValidos = Bukkit.getOnlinePlayers().stream()
+                .filter(p -> p.getGameMode() == org.bukkit.GameMode.SURVIVAL || p.getGameMode() == org.bukkit.GameMode.ADVENTURE)
+                .collect(Collectors.toList());
+
+        if (jugadoresValidos.size() < 2) {
+            Bukkit.broadcastMessage("§c¡Se necesitan al menos 2 jugadores en Survival para iniciar el evento!");
             return;
         }
+
         eventoActivo = true;
         playerItems.clear(); playerTimestamp.clear(); participants.clear();
 
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            participants.add(p.getName());
-            playerItems.put(p.getName(), 0);
-            playerTimestamp.put(p.getName(), System.currentTimeMillis());
-            p.playSound(p.getLocation(), Sound.MUSIC_DISC_OTHERSIDE, 100f, 1f);
+        if (eventScoreboard == null) {
+            eventScoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
         }
 
-        String translationKey;
-        if (collectionMethod.equals("block")) {
-            translationKey = "block.minecraft." + collectionTarget.replace(" ", "_");
-        } else {
-            translationKey = "entity.minecraft." + collectionTarget.replace(" ", "_");
-        }
+        syncTeamsToEventScoreboard();
 
+        Objective oldObj = eventScoreboard.getObjective("itemparty");
+        if (oldObj != null) oldObj.unregister();
+
+        Objective obj = eventScoreboard.registerNewObjective("itemparty", "dummy",
+                Component.text("Fiesta de Items").color(TextColor.fromHexString("#ae52e3")).decorate(TextDecoration.BOLD));
+        obj.setDisplaySlot(DisplaySlot.SIDEBAR);
+
+        // Configuración y envío a TODOS los jugadores en línea (incluso espectadores)
+        int seconds = parseTimeToSeconds(eventDuration);
+        String translationKey = collectionMethod.equals("block")
+                ? "block.minecraft." + collectionTarget.replace(" ", "_")
+                : "entity.minecraft." + collectionTarget.replace(" ", "_");
         String actionText = collectionMethod.equals("block") ? "rompiendo " : "matando ";
 
         String jsonMessage =
@@ -142,10 +180,12 @@ public class ItemPartyHandler implements Listener {
                         + "{\"text\":\"" + (collectionMethod.equals("block") ? "\\n§7Los bloques no dropean materiales normales.\\n " : "") + "\"}"
                         + "]";
 
-        for (Player p : Bukkit.getOnlinePlayers()) ruletaAnimation.playAnimation(p, jsonMessage);
-
-        int seconds = parseTimeToSeconds(eventDuration);
         for (Player p : Bukkit.getOnlinePlayers()) {
+            ruletaAnimation.playAnimation(p, jsonMessage);
+            p.playSound(p.getLocation(), Sound.MUSIC_DISC_OTHERSIDE, 100f, 1f);
+            p.setScoreboard(eventScoreboard);
+
+            // BossBars
             String id = p.getUniqueId() + "_itemparty_timer";
             if (!timerIdsByPlayer.containsKey(p.getUniqueId())) {
                 timerIdsByPlayer.put(p.getUniqueId(), id);
@@ -156,7 +196,18 @@ public class ItemPartyHandler implements Listener {
                 puntosBar.addPlayer(p);
                 puntosBars.put(p.getUniqueId(), puntosBar);
             }
+
+            // Inscribir a la competencia solo a los válidos
+            if (p.getGameMode() == org.bukkit.GameMode.SURVIVAL || p.getGameMode() == org.bukkit.GameMode.ADVENTURE) {
+                participants.add(p.getName());
+                playerItems.put(p.getName(), 0);
+                playerTimestamp.put(p.getName(), System.currentTimeMillis());
+            } else {
+                // Mensaje al espectador
+                p.sendMessage("§e[ItemParty] §fEstás en modo Creativo/Espectador. §cNo estás participando en el evento§f, pero puedes observarlo.");
+            }
         }
+
         actualizarScoreboard();
         Bukkit.getScheduler().runTaskLater(plugin, this::terminarEvento, seconds * 20L);
     }
@@ -166,12 +217,14 @@ public class ItemPartyHandler implements Listener {
         eventoActivo = false;
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            Scoreboard board = p.getScoreboard();
-            if (board != null) {
-                Objective objective = board.getObjective("itemparty");
-                if (objective != null) objective.unregister();
-            }
+            p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
             p.stopSound(Sound.MUSIC_DISC_OTHERSIDE);
+        }
+
+        if (eventScoreboard != null) {
+            Objective obj = eventScoreboard.getObjective("itemparty");
+            if (obj != null) obj.unregister();
+            eventScoreboard = null;
         }
 
         timerIdsByPlayer.values().forEach(tiempoCommand::removeBossBar);
@@ -240,6 +293,46 @@ public class ItemPartyHandler implements Listener {
         }, 40L);
     }
 
+    public void gestionarParticipantes(CommandSender sender, String accion, String targetName) {
+        if (!eventoActivo) {
+            sender.sendMessage("§cEl evento no está activo.");
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(targetName);
+
+        if (accion.equalsIgnoreCase("add")) {
+            if (participants.contains(targetName)) {
+                sender.sendMessage("§cEl jugador ya está participando en el evento.");
+                return;
+            }
+            participants.add(targetName);
+            playerItems.putIfAbsent(targetName, 0);
+            playerTimestamp.putIfAbsent(targetName, System.currentTimeMillis());
+
+            if (target != null) {
+                target.sendMessage("§a[ItemParty] ¡Has sido añadido manualmente a la competencia!");
+            }
+            sender.sendMessage("§a[ItemParty] Jugador " + targetName + " añadido.");
+            actualizarScoreboard();
+
+        } else if (accion.equalsIgnoreCase("remove")) {
+            if (!participants.contains(targetName)) {
+                sender.sendMessage("§cEl jugador no está participando en el evento.");
+                return;
+            }
+            participants.remove(targetName);
+            playerItems.remove(targetName);
+            playerTimestamp.remove(targetName);
+
+            if (target != null) {
+                target.sendMessage("§c[ItemParty] Has sido eliminado manualmente de la competencia.");
+            }
+            sender.sendMessage("§a[ItemParty] Jugador " + targetName + " removido.");
+            actualizarScoreboard();
+        }
+    }
+
     public boolean quitarCastigoManualmente(String playerName) {
         Player target = Bukkit.getPlayer(playerName);
         UUID uuid = (target != null) ? target.getUniqueId() : Bukkit.getOfflinePlayer(playerName).getUniqueId();
@@ -287,17 +380,63 @@ public class ItemPartyHandler implements Listener {
     }
 
     @EventHandler
+    public void onGameModeChange(org.bukkit.event.player.PlayerGameModeChangeEvent event) {
+        if (!eventoActivo) return;
+
+        Player p = event.getPlayer();
+        org.bukkit.GameMode newMode = event.getNewGameMode();
+
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (newMode == org.bukkit.GameMode.CREATIVE || newMode == org.bukkit.GameMode.SPECTATOR) {
+                if (participants.contains(p.getName())) {
+                    participants.remove(p.getName());
+                    playerItems.remove(p.getName());
+                    playerTimestamp.remove(p.getName());
+
+                    p.sendMessage("§c[ItemParty] Has sido eliminado de la competencia por cambiar a modo Creativo/Espectador.");
+
+                    lastScoreUpdate = 0;
+                    actualizarScoreboard();
+                }
+            }
+            // Si cambia a Survival NO lo metemos automáticamente, tiene que ser por comando
+        }, 1L);
+    }
+
+    @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player p = event.getPlayer();
         String uuidStr = p.getUniqueId().toString();
 
-        if (eventoActivo && participants.contains(p.getName())) {
+        if (eventoActivo) {
+            // Todos reciben BossBars y Scoreboard para espectar
             BossBar bar = puntosBars.get(p.getUniqueId());
             if (bar == null) {
-                bar = Bukkit.createBossBar("§3§lPuntos§f: §b0", BarColor.WHITE, BarStyle.SOLID);
+                int pts = playerItems.getOrDefault(p.getName(), 0);
+                bar = Bukkit.createBossBar("§3§lPuntos§f: §b" + pts, BarColor.WHITE, BarStyle.SOLID);
                 puntosBars.put(p.getUniqueId(), bar);
             }
             if (!bar.getPlayers().contains(p)) bar.addPlayer(p);
+
+            String id = p.getUniqueId() + "_itemparty_timer";
+            if (!timerIdsByPlayer.containsKey(p.getUniqueId())) {
+                timerIdsByPlayer.put(p.getUniqueId(), id);
+                int seconds = parseTimeToSeconds(eventDuration);
+                tiempoCommand.createPlayerBossBar(p, "§5§lFiesta de Items:", seconds, eventDuration, "off", id);
+            }
+
+            Scoreboard mainBoard = Bukkit.getScoreboardManager().getMainScoreboard();
+            Team mainTeam = mainBoard.getEntryTeam(p.getName());
+            if (mainTeam != null && eventScoreboard != null) {
+                Team evTeam = eventScoreboard.getTeam(mainTeam.getName());
+                if (evTeam != null && !evTeam.hasEntry(p.getName())) {
+                    evTeam.addEntry(p.getName());
+                }
+            }
+            p.setScoreboard(eventScoreboard);
+
+            lastScoreUpdate = 0;
+            actualizarScoreboard();
         }
 
         if (playersConfig.contains("punishments." + uuidStr)) {
@@ -320,11 +459,8 @@ public class ItemPartyHandler implements Listener {
         catch (IOException ex) { plugin.getLogger().warning("Error guardando itempartyplayers.yml"); }
     }
 
-    // =========================================================================
-    //                    SCOREBOARD - COPIA EXACTA LÓGICA ANTIGUA
-    // =========================================================================
     private void actualizarScoreboard() {
-        if (!eventoActivo) return;
+        if (!eventoActivo || eventScoreboard == null) return;
         long now = System.currentTimeMillis();
         if (now - lastScoreUpdate < 500) return;
         lastScoreUpdate = now;
@@ -332,7 +468,6 @@ public class ItemPartyHandler implements Listener {
         List<Map.Entry<String, Integer>> sorted = ordenarPlayers();
         int total = sorted.size();
 
-        // Lógica de seguridad (igual al antiguo)
         int safeCount;
         if (safePlayers >= 0) {
             safeCount = safePlayers;
@@ -340,100 +475,80 @@ public class ItemPartyHandler implements Listener {
             safeCount = Math.max(0, total + safePlayers);
         }
 
-        // Calcular zona de peligro (igual al antiguo, para el bucle inferior)
-        // Usamos Math.max para asegurar que si hay pocos, no rompa
-        int dangerCount = Math.max(0, total - safeCount);
+        Objective obj = eventScoreboard.getObjective("itemparty");
+        if (obj == null) return;
 
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (!participants.contains(viewer.getName())) continue;
+        int score = 15;
+        setSpace(obj, score--, 99);
 
-            Scoreboard board = viewer.getScoreboard();
-            Objective obj = board.getObjective("itemparty");
-
-            if (obj == null) {
-                obj = board.registerNewObjective("itemparty", "dummy",
-                        Component.text("Fiesta de Items").color(TextColor.fromHexString("#ae52e3")).decorate(TextDecoration.BOLD));
-                obj.setDisplaySlot(DisplaySlot.SIDEBAR);
+        // 1. TOP SECTION
+        for (int i = 0; i < 6; i++) {
+            Map.Entry<String, Integer> e;
+            if (i < safeCount && i < sorted.size()) {
+                e = sorted.get(i);
+            } else {
+                e = Map.entry("----", 0);
             }
 
-            int score = 15;
-            setSpace(obj, score--, 99); // Espacio superior
+            String nombre = e.getKey();
+            int valor = e.getValue();
+            if (nombre.length() > 10) nombre = nombre.substring(0, 10) + "..";
 
-            // 1. TOP SECTION (Fija en 6 líneas, como el antiguo +1 que pediste = 7)
-            // Aquí mostramos SOLO a los salvados o Dummies.
-            // Si un jugador NO es salvo, se muestra como ---- aquí (lógica antigua).
-            for (int i = 0; i < 6; i++) {
+            Team team = getOrCreateTeam(eventScoreboard, "itp_top_" + i);
+            String hiddenKey = "§" + (i);
+            if (!team.hasEntry(hiddenKey)) team.addEntry(hiddenKey);
 
-                // LA LÓGICA CLAVE ANTIGUA:
-                // Si el índice es menor que safeCount Y existe en la lista -> Es un jugador salvo.
-                // Si no, se muestra ----.
-                Map.Entry<String, Integer> e;
-                if (i < safeCount && i < sorted.size()) {
-                    e = sorted.get(i);
-                } else {
-                    e = Map.entry("----", 0);
-                }
-
-                String nombre = e.getKey();
-                int valor = e.getValue();
-                if (nombre.length() > 10) nombre = nombre.substring(0, 10) + "..";
-
-                // Estilo "Salvado" (Morado y Azul)
-                Team team = getOrCreateTeam(board, "itp_top_" + i);
-                String hiddenKey = "§" + (i);
-                team.addEntry(hiddenKey);
-
-                Component prefix;
-                if (nombre.equals("----")) {
-                    prefix = Component.text((i+1) + ". ", TextColor.fromHexString("#ae52e3"))
-                            .append(Component.text("----", NamedTextColor.GRAY));
-                } else {
-                    prefix = Component.text((i+1) + ". ", TextColor.fromHexString("#ae52e3"))
-                            .append(Component.text(nombre + " ", TextColor.fromHexString("#4aa5dc")))
-                            .append(Component.text("→ ", NamedTextColor.GRAY))
-                            .append(Component.text(valor, NamedTextColor.WHITE));
-                }
-
-                team.prefix(prefix);
-                obj.getScore(hiddenKey).setScore(score--);
-            }
-
-            // Espacio separador (Igual al antiguo)
-            setSpace(obj, score--, 88);
-
-            // 2. DANGER SECTION (Zona de perdedores)
-            // Se muestran los jugadores que están después del safeCount
-            // Mostramos hasta 2 (para no saturar, ajustable)
-            int visualDangerLimit = 3;
-            for (int i = 0; i < visualDangerLimit; i++) {
-                int index = safeCount + i;
-
-                if (index >= sorted.size()) break; // No hay más perdedores
-
-                Map.Entry<String, Integer> e = sorted.get(index);
-                String nombre = e.getKey();
-                int valor = e.getValue();
-                if (nombre.length() > 10) nombre = nombre.substring(0, 10) + "..";
-
-                Team team = getOrCreateTeam(board, "itp_warn_" + i);
-                String hiddenKey = "§c" + " ".repeat(i+1); // +1 para evitar conflictos con spaces
-                team.addEntry(hiddenKey);
-
-                // Estilo Peligro (Rojo)
-                Component prefix = Component.text("⚠. ", NamedTextColor.RED)
-                        .append(Component.text(nombre + " ", TextColor.fromHexString("#ee749e")))
+            Component prefix;
+            if (nombre.equals("----")) {
+                prefix = Component.text((i+1) + ". ", TextColor.fromHexString("#ae52e3"))
+                        .append(Component.text("----", NamedTextColor.GRAY));
+            } else {
+                prefix = Component.text((i+1) + ". ", TextColor.fromHexString("#ae52e3"))
+                        .append(Component.text(nombre + " ", TextColor.fromHexString("#4aa5dc")))
                         .append(Component.text("→ ", NamedTextColor.GRAY))
                         .append(Component.text(valor, NamedTextColor.WHITE));
+            }
 
-                team.prefix(prefix);
-                obj.getScore(hiddenKey).setScore(score--);
+            team.prefix(prefix);
+            obj.getScore(hiddenKey).setScore(score--);
+        }
+
+        setSpace(obj, score--, 88);
+
+        // 2. DANGER SECTION
+        int visualDangerLimit = 3;
+        for (int i = 0; i < visualDangerLimit; i++) {
+            int index = safeCount + i;
+            if (index >= sorted.size()) break;
+
+            Map.Entry<String, Integer> e = sorted.get(index);
+            String nombre = e.getKey();
+            int valor = e.getValue();
+            if (nombre.length() > 10) nombre = nombre.substring(0, 10) + "..";
+
+            Team team = getOrCreateTeam(eventScoreboard, "itp_warn_" + i);
+            String hiddenKey = "§c" + " ".repeat(i+1);
+            if (!team.hasEntry(hiddenKey)) team.addEntry(hiddenKey);
+
+            Component prefix = Component.text("⚠. ", NamedTextColor.RED)
+                    .append(Component.text(nombre + " ", TextColor.fromHexString("#ee749e")))
+                    .append(Component.text("→ ", NamedTextColor.GRAY))
+                    .append(Component.text(valor, NamedTextColor.WHITE));
+
+            team.prefix(prefix);
+            obj.getScore(hiddenKey).setScore(score--);
+        }
+
+        // Refrescar el board para TODOS (incluso espectadores)
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getScoreboard() != eventScoreboard) {
+                p.setScoreboard(eventScoreboard);
             }
         }
     }
 
     private void setSpace(Objective obj, int score, int uniqueId) {
-        Scoreboard board = obj.getScoreboard();
-        Team t = getOrCreateTeam(board, "space_" + uniqueId);
+        Team t = getOrCreateTeam(eventScoreboard, "space_" + uniqueId);
         String entry = "§" + (char)('a' + (uniqueId % 20)) + "§r";
         if (!t.hasEntry(entry)) t.addEntry(entry);
         t.prefix(Component.text(""));
@@ -542,7 +657,6 @@ public class ItemPartyHandler implements Listener {
         playersConfig.set("punishments", null);
         playersConfig.set("players", null);
         savePlayersConfig();
-        /*Bukkit.broadcastMessage("§a[ItemParty] Archivo itempartyplayers.yml (castigos) reiniciado correctamente.");*/
     }
 
     private String getMobType(Entity entity) {

@@ -1,5 +1,6 @@
 package list;
 
+import Handlers.Teams.TeamType;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -11,124 +12,125 @@ public class VHList extends BukkitRunnable {
 
     private final JavaPlugin plugin;
     private boolean showCreator = true;
-    private int counter = 0;
+
+    // Colores de vida actualizados
+    private static final String COL_HP_HIGH = ChatColor.of("#4ade80").toString(); // Verde   > 12
+    private static final String COL_HP_MID  = ChatColor.of("#fb923c").toString(); // Naranja 6-12
+    private static final String COL_HP_LOW  = ChatColor.of("#ef4444").toString(); // Rojo    <= 6
 
     public VHList(JavaPlugin plugin) {
         this.plugin = plugin;
+        this.runTaskTimer(plugin, 0L, 20L);
+
+        // Alternador de créditos del footer
         new BukkitRunnable() {
             @Override
             public void run() {
                 showCreator = !showCreator;
             }
-        }.runTaskTimer(plugin, 0L, 200L); // 200 ticks = 10 segundos
+        }.runTaskTimer(plugin, 0L, 200L);
     }
 
     @Override
     public void run() {
         for (Player player : Bukkit.getOnlinePlayers()) {
+            removeOldScoreboards(player); // Limpiamos rastro del ping/vida antiguos en scoreboard
             updateTablistForPlayer(player);
-            updateHealthScoreboard(player);
         }
     }
 
     public void updateTablistForPlayer(Player player) {
-        String header = ChatColor.DARK_GRAY + "●" + ChatColor.GRAY + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "                 " +
-                ChatColor.YELLOW + ChatColor.BOLD + ChatColor.STRIKETHROUGH + "                 " +
-                ChatColor.GRAY + ChatColor.BOLD + ChatColor.STRIKETHROUGH + "                 " + ChatColor.DARK_GRAY + "●\n" +
+        int online = Bukkit.getOnlinePlayers().size();
+        int ping = player.getPing();
+
+        // ─── Header & Footer de Ismanugames ─────────────────────────────────────────
+        String sepColor1 = ChatColor.of("#fdfd96").toString();
+        String sepColor2 = ChatColor.of("#ffffff").toString();
+
+        String separator = ChatColor.DARK_GRAY + "●" + sepColor1 + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "                 " +
+                sepColor2 + ChatColor.BOLD + ChatColor.STRIKETHROUGH + "                 " +
+                sepColor1 + ChatColor.BOLD + ChatColor.STRIKETHROUGH + "                 " + ChatColor.DARK_GRAY + "●\n";
+
+        String header = separator +
                 ChatColor.GRAY + " \n" +
+                ChatColor.of("#fbbf24") + ChatColor.BOLD + "      \uD83E\uDD8A ISMANUGAMES.HOLY.GG \uD83E\uDD8A     \n" +
                 ChatColor.GRAY + " \n" +
-                ChatColor.GOLD + "" + ChatColor.BOLD + "      \uD83E\uDD8A ISMANUSMP 2 \uD83E\uDD8A     " +
-                ChatColor.GRAY + " \n" +
+                ChatColor.of("#facc15") + "📊 ONLINE: " + ChatColor.WHITE + online + ChatColor.DARK_GRAY + "  |  " +
+                ChatColor.of("#4ade80") + "📶 PING: " + ChatColor.WHITE + ping + " ms\n" +
                 ChatColor.GRAY + " \n";
 
         String alternatingText;
         if (showCreator) {
-            alternatingText = ChatColor.WHITE + "" + ChatColor.BOLD + "Creado por: " + ChatColor.DARK_AQUA + "CrissyjuanxD";
+            alternatingText = ChatColor.WHITE + "" + ChatColor.BOLD + "Programado por: " + ChatColor.of("#22d3ee") + "CrissyjuanxD";
         } else {
-            alternatingText = ChatColor.WHITE + "" + ChatColor.BOLD + "Organizado por: " + ChatColor.YELLOW + "IsManuPlay";
+            alternatingText = ChatColor.WHITE + "" + ChatColor.BOLD + "Organizado por: " + ChatColor.of("#facc15") + "IsManuPlay";
         }
 
-        String footer = ChatColor.GRAY + " \n" +
-                alternatingText + " \n" +
+        String footer = " \n" + alternatingText + " \n" +
                 ChatColor.GRAY + " \n" +
-                ChatColor.DARK_GRAY + "" + ChatColor.BOLD + "●" + ChatColor.GRAY + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "           " +
-                ChatColor.YELLOW + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "           " +
-                ChatColor.GRAY + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "     " +
-                ChatColor.GOLD + ChatColor.BOLD + "∨" + ChatColor.GRAY + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "      " +
-                ChatColor.YELLOW + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "           " +
-                ChatColor.GRAY + ChatColor.BOLD + "" + ChatColor.STRIKETHROUGH + "           " +
-                ChatColor.DARK_GRAY + ChatColor.BOLD + "●";
+                ChatColor.GRAY + "Hosteado por @HolyHosting\n" +
+                ChatColor.GRAY + " \n" +
+                separator.replace("\n", "");
+
         player.setPlayerListHeaderFooter(header, footer);
 
-        Scoreboard scoreboard = player.getScoreboard();
-        Team team = scoreboard.getEntryTeam(player.getName());
+        // ─── Sistema de Prefijos, Nombre y Corazones ────────────────
+        Scoreboard mainScoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+        Team team = mainScoreboard.getEntryTeam(player.getName());
 
-        String suffix = team != null ? team.getSuffix() : "";
-        String unicode = getUnicodeForTeam(team);
-        String color = getColorForTeam(team);
+        String tabPrefix = "";
+        String colorHex = ChatColor.GRAY.toString();
+        String suffix = "";
 
-        String coloredName = ChatColor.WHITE + unicode + " " + color + player.getName() + suffix + " ";
-        player.setPlayerListName(coloredName);
-    }
-
-    public void updateHealthScoreboard(Player player) {
-        Scoreboard scoreboard = player.getScoreboard();
-
-        // Crear o obtener el objetivo de salud
-        Objective healthObjective = scoreboard.getObjective("Healthvct");
-        if (healthObjective == null) {
-            healthObjective = scoreboard.registerNewObjective("Healthvct", "health",
-                    ChatColor.DARK_PURPLE + "❤ Vida", RenderType.HEARTS);
-            healthObjective.setDisplaySlot(DisplaySlot.PLAYER_LIST);
-        }
-    }
-
-
-    // Método para obtener el Unicode según el equipo
-    private String getUnicodeForTeam(Team team) {
         if (team != null) {
-            String teamName = team.getName();
-            switch (teamName) {
-                case "Admin":
-                    return ChatColor.GRAY + "" + ChatColor.BOLD + "[" + ChatColor.of("#ff935f") + ChatColor.BOLD + "HOK" + ChatColor.GRAY + ChatColor.BOLD + "]";
-                case "Mod":
-                    return ChatColor.GRAY + "" + ChatColor.BOLD + "[" + ChatColor.of("#00BFFF") + ChatColor.BOLD + "ANB" + ChatColor.GRAY + ChatColor.BOLD + "]";
-                case "Helper":
-                    return "\uEB92";
-                case "TSurvivor":
-                    return "\uEB8F";
-                case "ZMiembro":
-                    return ChatColor.GRAY + "" + ChatColor.BOLD + "[" + ChatColor.of("#ffa39d") + ChatColor.BOLD + "ALD" + ChatColor.GRAY + ChatColor.BOLD + "]";
-                case "ZFantasma":
-                    return "\uEB91";
-                default:
-                    return "";
+            suffix = team.getSuffix() != null ? team.getSuffix() : "";
+            TeamType type = TeamType.getById(team.getName());
+
+            if (type != null) {
+                tabPrefix = type.getTabPrefix();
+                colorHex = type.getBungeeColor().toString();
+            } else {
+                tabPrefix = team.getPrefix() != null ? team.getPrefix() : "";
             }
         }
-        return "";
-    }
 
-    private String getColorForTeam(Team team) {
-        if (team != null) {
-            String teamName = team.getName();
-            switch (teamName) {
-                case "Admin":
-                    return ChatColor.of("#ff935f").toString();
-                case "Mod":
-                    return ChatColor.of("#00BFFF").toString();
-                case "Helper":
-                    return ChatColor.of("#67E590").toString();
-                case "TSurvivor":
-                    return ChatColor.of("#9455ED").toString();
-                case "ZMiembro":
-                    return ChatColor.of("#ffa39d").toString();
-                case "ZFantasma":
-                    return ChatColor.of("#555555").toString();
-                default:
-                    return ChatColor.WHITE.toString();
-            }
+        // Cálculos de vida
+        int hp = (int) Math.ceil(player.getHealth());
+        int absorption = (int) Math.ceil(player.getAbsorptionAmount());
+        int totalHp = hp + absorption;
+
+        // El símbolo ahora es siempre el mismo (texto plano), solo cambia el color
+        String heartSymbol = "❤";
+        String heartColor;
+
+        if (hp > 12) {
+            heartColor = COL_HP_HIGH; // Verde
+        } else if (hp > 6) {
+            heartColor = COL_HP_MID;  // Naranja
+        } else {
+            heartColor = COL_HP_LOW;  // Rojo
         }
-        return ChatColor.GRAY.toString();
+
+        // Concatenación final del nombre en Tablist (Con 2 espacios exactos y el corazón pegado al número)
+        String coloredName = ChatColor.WHITE + tabPrefix + colorHex + player.getName() + suffix + "  " + heartColor + heartSymbol + totalHp;
+
+        if (!coloredName.equals(player.getPlayerListName())) {
+            player.setPlayerListName(coloredName);
+        }
     }
 
+    // Limpia los objetivos de Scoreboard para que no interfieran ni dupliquen información
+    public void removeOldScoreboards(Player player) {
+        Scoreboard scoreboard = player.getScoreboard();
+        if (scoreboard != null) {
+            Objective healthObjectiveVct = scoreboard.getObjective("Healthvct");
+            if (healthObjectiveVct != null) healthObjectiveVct.unregister();
+
+            Objective healthObjective = scoreboard.getObjective("tabHealth");
+            if (healthObjective != null) healthObjective.unregister();
+
+            Objective pingObjective = scoreboard.getObjective("tabPing");
+            if (pingObjective != null) pingObjective.unregister();
+        }
+    }
 }

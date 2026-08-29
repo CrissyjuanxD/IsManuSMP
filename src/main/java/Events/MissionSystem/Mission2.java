@@ -5,17 +5,17 @@ import TitleListener.SuccessNotification;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Monster;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.spectralmemories.bloodmoon.BloodmoonActuator;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,12 +34,12 @@ public class Mission2 implements Mission, Listener {
 
     @Override
     public String getName() {
-        return "Armadura Básica";
+        return "No le tengo miedo a nada";
     }
 
     @Override
     public String getDescription() {
-        return "Equípate una armadura completa de diamante.";
+        return "Mata 100 mobs hostiles\nmientras haya una\nBloodMoon activa.";
     }
 
     @Override
@@ -52,94 +52,64 @@ public class Mission2 implements Mission, Listener {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(5);
-        ItemStack goldenApples = new ItemStack(Material.ENCHANTED_GOLDEN_APPLE, 1);
-        ItemStack diamonds = new ItemStack(Material.GOLDEN_APPLE, 3);
-
-
-        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE,1);
-        for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
-                rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
-                rewards.add(xpFill.clone());
-            }
+        coins.setAmount(17);
+        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 10);
+        ItemStack sharpBook = new ItemStack(Material.ENCHANTED_BOOK);
+        EnchantmentStorageMeta meta = (EnchantmentStorageMeta) sharpBook.getItemMeta();
+        if (meta != null) {
+            meta.addStoredEnchant(Enchantment.SHARPNESS, 6, true);
+            sharpBook.setItemMeta(meta);
         }
 
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
+
+        for (int i = 0; i < 27; i++) {
+            if (i == 11) rewards.add(sharpBook);
+            else if (i == 13) rewards.add(coins);
+            else if (i == 15) rewards.add(goldenApples);
+            else rewards.add(xpFill.clone());
+        }
         return rewards;
     }
 
     @Override
-    public void initializePlayerData(String playerName) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        String[] parts = {"helmet", "chestplate", "leggings", "boots"};
-        for (String p : parts) data.set("players." + playerName + ".missions.2.armor." + p, false);
-        try { data.save(missionHandler.getMissionFile()); } catch (IOException e) { e.printStackTrace(); }
-    }
+    public void initializePlayerData(String playerName) { }
 
     @Override
     public void checkCompletion(String playerName) {}
 
     @EventHandler
-    public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getWhoClicked() instanceof Player player && missionHandler.isMissionActive(2)) {
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> checkArmor(player), 1L);
-        }
-    }
+    public void onEntityDeath(EntityDeathEvent event) {
+        if (!(event.getEntity() instanceof Monster)) return;
 
-    @EventHandler
-    public void onItemHeld(PlayerItemHeldEvent event) {
-        if (missionHandler.isMissionActive(2)) {
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> checkArmor(event.getPlayer()), 1L);
-        }
-    }
+        Player player = event.getEntity().getKiller();
+        if (player == null) return;
 
-    private void checkArmor(Player player) {
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        String name = player.getName();
-        if (data.getBoolean("players." + name + ".missions.2.completed", false)) return;
+        MissionData data = missionHandler.getData(player, 2);
+        if (!data.isActive() || data.isCompleted()) return;
 
-        ItemStack h = player.getInventory().getHelmet();
-        ItemStack c = player.getInventory().getChestplate();
-        ItemStack l = player.getInventory().getLeggings();
-        ItemStack b = player.getInventory().getBoots();
+        BloodmoonActuator actuator = BloodmoonActuator.GetActuator(player.getWorld());
+        if (actuator == null || !actuator.isInProgress()) return;
 
-        boolean hasH = h != null && h.getType() == Material.DIAMOND_HELMET;
-        boolean hasC = c != null && c.getType() == Material.DIAMOND_CHESTPLATE;
-        boolean hasL = l != null && l.getType() == Material.DIAMOND_LEGGINGS;
-        boolean hasB = b != null && b.getType() == Material.DIAMOND_BOOTS;
+        int current = data.getProgressInt("bloodmoon_kills");
+        int target = 100; // Actualizado a 100
 
-        boolean updated = false;
-        if (hasH && !data.getBoolean("players." + name + ".missions.2.armor.helmet")) {
-            data.set("players." + name + ".missions.2.armor.helmet", true); updated = true;
-        }
-        if (hasC && !data.getBoolean("players." + name + ".missions.2.armor.chestplate")) {
-            data.set("players." + name + ".missions.2.armor.chestplate", true); updated = true;
-        }
-        if (hasL && !data.getBoolean("players." + name + ".missions.2.armor.leggings")) {
-            data.set("players." + name + ".missions.2.armor.leggings", true); updated = true;
-        }
-        if (hasB && !data.getBoolean("players." + name + ".missions.2.armor.boots")) {
-            data.set("players." + name + ".missions.2.armor.boots", true); updated = true;
-        }
+        if (current < target) {
+            current++;
+            data.setProgressValue("bloodmoon_kills", current);
 
-        if (updated) {
-            try { data.save(missionHandler.getMissionFile()); } catch (IOException e) { e.printStackTrace(); }
-
-            if (hasH && hasC && hasL && hasB) {
+            if (current >= target) {
                 successNotification.showSuccess(player);
-                missionHandler.completeMission(name, 2);
+                missionHandler.saveData(player, 2, data);
+                missionHandler.completeMission(player, 2);
             } else {
-                int count = (hasH?1:0) + (hasC?1:0) + (hasL?1:0) + (hasB?1:0);
+                missionHandler.saveData(player, 2, data);
+
                 String msg = ChatColor.GOLD + "۞ " +
-                        ChatColor.of("#FFCC99") + "Prog. Armadura: " +
-                        ChatColor.of("#FFA07A") + count +
+                        ChatColor.of("#FFCC99") + "Kills (BloodMoon): " +
+                        ChatColor.of("#FFA07A") + current +
                         ChatColor.of("#FFE4B5") + "/" +
-                        ChatColor.of("#FFA07A") + "4";
+                        ChatColor.of("#FFA07A") + target;
                 actionBarHandler.sendActionBar(player, msg);
             }
         }

@@ -5,16 +5,18 @@ import TitleListener.SuccessNotification;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class Mission4 implements Mission, Listener {
@@ -22,6 +24,16 @@ public class Mission4 implements Mission, Listener {
     private final MissionHandler missionHandler;
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
+
+    private final List<Material> allArmors = Arrays.asList(
+            Material.LEATHER_HELMET, Material.LEATHER_CHESTPLATE, Material.LEATHER_LEGGINGS, Material.LEATHER_BOOTS,
+            Material.GOLDEN_HELMET, Material.GOLDEN_CHESTPLATE, Material.GOLDEN_LEGGINGS, Material.GOLDEN_BOOTS,
+            Material.CHAINMAIL_HELMET, Material.CHAINMAIL_CHESTPLATE, Material.CHAINMAIL_LEGGINGS, Material.CHAINMAIL_BOOTS,
+            Material.IRON_HELMET, Material.IRON_CHESTPLATE, Material.IRON_LEGGINGS, Material.IRON_BOOTS,
+            Material.DIAMOND_HELMET, Material.DIAMOND_CHESTPLATE, Material.DIAMOND_LEGGINGS, Material.DIAMOND_BOOTS,
+            Material.NETHERITE_HELMET, Material.NETHERITE_CHESTPLATE, Material.NETHERITE_LEGGINGS, Material.NETHERITE_BOOTS,
+            Material.COPPER_HELMET, Material.COPPER_CHESTPLATE, Material.COPPER_LEGGINGS, Material.COPPER_BOOTS
+    );
 
     public Mission4(JavaPlugin plugin, MissionHandler missionHandler) {
         this.plugin = plugin;
@@ -32,12 +44,12 @@ public class Mission4 implements Mission, Listener {
 
     @Override
     public String getName() {
-        return "¡Sanguinario!";
+        return "El Mejor Guerrero";
     }
 
     @Override
     public String getDescription() {
-        return "Elimina a otro jugador en combate.";
+        return "Equípate todas las piezas\nde todas las armaduras\ndel juego.";
     }
 
     @Override
@@ -50,24 +62,25 @@ public class Mission4 implements Mission, Listener {
         List<ItemStack> rewards = new ArrayList<>();
 
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(10);
-        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 8);
-        ItemStack diamonds = new ItemStack(Material.GOLDEN_CARROT, 20);
+        coins.setAmount(14);
 
+        ItemStack goldenApples = new ItemStack(Material.ENCHANTED_GOLDEN_APPLE, 2);
 
-        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE,1);
-        for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
-                rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
-                rewards.add(xpFill.clone());
-            }
+        ItemStack protBook = new ItemStack(Material.ENCHANTED_BOOK);
+        EnchantmentStorageMeta meta = (EnchantmentStorageMeta) protBook.getItemMeta();
+        if (meta != null) {
+            meta.addStoredEnchant(Enchantment.PROTECTION, 5, true);
+            protBook.setItemMeta(meta);
         }
 
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 1);
+
+        for (int i = 0; i < 27; i++) {
+            if (i == 11) rewards.add(protBook);
+            else if (i == 13) rewards.add(coins);
+            else if (i == 15) rewards.add(goldenApples);
+            else rewards.add(xpFill.clone());
+        }
         return rewards;
     }
 
@@ -78,28 +91,66 @@ public class Mission4 implements Mission, Listener {
     public void checkCompletion(String playerName) {}
 
     @EventHandler
-    public void onPlayerDeath(PlayerDeathEvent event) {
-        if (!missionHandler.isMissionActive(4)) return;
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player) {
+            if (missionHandler.isMissionActive(player, 4)) {
+                plugin.getServer().getScheduler().runTaskLater(plugin, () -> checkArmor(player), 1L);
+            }
+        }
+    }
 
-        Player victim = event.getEntity();
-        Player killer = victim.getKiller();
+    @EventHandler
+    public void onItemHeld(PlayerItemHeldEvent event) {
+        if (missionHandler.isMissionActive(event.getPlayer(), 4)) {
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> checkArmor(event.getPlayer()), 1L);
+        }
+    }
 
-        // Verificar que haya un asesino y que sea un jugador
-        if (killer == null) return;
+    private void checkArmor(Player player) {
+        MissionData data = missionHandler.getData(player, 4);
 
-        // Evitar que cuente si se mata a sí mismo (opcional)
-        if (killer.equals(victim)) return;
+        if (data.isCompleted()) return;
 
-        String killerName = killer.getName();
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
+        ItemStack[] equipped = {
+                player.getInventory().getHelmet(),
+                player.getInventory().getChestplate(),
+                player.getInventory().getLeggings(),
+                player.getInventory().getBoots()
+        };
 
-        if (!data.getBoolean("players." + killerName + ".missions.4.completed", false)) {
-            successNotification.showSuccess(killer);
+        boolean updated = false;
 
-            String msg = ChatColor.GOLD + "۞ " + ChatColor.of("#FFCC99") + "¡Has eliminado a " + ChatColor.RED + victim.getName() + "!";
-            actionBarHandler.sendActionBar(killer, msg);
+        for (ItemStack item : equipped) {
+            if (item != null && allArmors.contains(item.getType())) {
+                String key = "armor_" + item.getType().name();
+                if (!data.getProgressBool(key)) {
+                    data.setProgressValue(key, true);
+                    updated = true;
+                }
+            }
+        }
 
-            missionHandler.completeMission(killerName, 4);
+        if (updated) {
+            int current = 0;
+            for (Material mat : allArmors) {
+                if (data.getProgressBool("armor_" + mat.name())) {
+                    current++;
+                }
+            }
+
+            missionHandler.saveData(player, 4, data);
+
+            if (current >= allArmors.size()) {
+                successNotification.showSuccess(player);
+                missionHandler.completeMission(player, 4);
+            } else {
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Prog. Armaduras: " +
+                        ChatColor.of("#FFA07A") + current +
+                        ChatColor.of("#FFE4B5") + "/" +
+                        ChatColor.of("#FFA07A") + allArmors.size();
+                actionBarHandler.sendActionBar(player, msg);
+            }
         }
     }
 }

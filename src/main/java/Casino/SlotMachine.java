@@ -1,7 +1,10 @@
 package Casino;
 
-import items.DoubleLifeTotem;
-import items.EconomyItems;
+import Dificultades.DayOneChanges;
+import Habilidades.HabilidadesBook;
+import Managers.ItemManager;
+import items.*;
+import items.IceBow.IceBowItem;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.*;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -24,6 +27,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Transformation;
+import org.joml.Quaternionf;
 
 import java.io.File;
 import java.io.IOException;
@@ -32,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class SlotMachine implements Listener {
     private final JavaPlugin plugin;
-    private final DoubleLifeTotem doubleLifeTotem;
+    private final ItemManager itemManager;
     private final CasinoManager manager;
 
     // Título con colores del código antiguo
@@ -55,6 +59,7 @@ public class SlotMachine implements Listener {
     private final Map<Location, List<ItemDisplay>> activeDisplays = new ConcurrentHashMap<>();
     private final Map<Location, BukkitRunnable> activeAnimations = new ConcurrentHashMap<>();
     private final Map<Location, AnimationState> animationStates = new ConcurrentHashMap<>();
+    private final Map<Location, Long> animationStartTimes = new ConcurrentHashMap<>();
 
     private final File configFile;
     private FileConfiguration config;
@@ -81,10 +86,10 @@ public class SlotMachine implements Listener {
         }
     }
 
-    public SlotMachine(JavaPlugin plugin, CasinoManager manager) {
+    public SlotMachine(JavaPlugin plugin, CasinoManager manager, ItemManager itemManager) {
         this.plugin = plugin;
         this.manager = manager;
-        this.doubleLifeTotem = new DoubleLifeTotem(plugin);
+        this.itemManager = itemManager;
         this.configFile = new File(plugin.getDataFolder(), "SlotMachine.yml");
 
         loadConfig();
@@ -105,9 +110,8 @@ public class SlotMachine implements Listener {
             FileConfiguration def = YamlConfiguration.loadConfiguration(configFile);
 
             // Probabilidad de ganar (Porcentaje 0 - 100)
-            def.set("SlotMachine.win_chance", 15.0); // 15% de probabilidad de ganar
+            def.set("SlotMachine.win_chance", 15.0);
 
-            // Recompensas reestructuradas
             def.set("SlotMachine.minerales.three_out_of_three", Arrays.asList("diamond 5", "gold_ingot 10"));
             def.set("SlotMachine.itemsvarios.three_out_of_three", Arrays.asList("golden_apple 2", "experience_bottle 16"));
             def.set("SlotMachine.pociones.three_out_of_three", Arrays.asList("potion 1"));
@@ -127,11 +131,17 @@ public class SlotMachine implements Listener {
 
         Location loc = event.getClickedBlock().getLocation();
 
-        // Verificar si es una mesa válida
         if (!manager.isTable(loc) || !manager.getTableType(loc).equals("slot")) return;
 
         event.setCancelled(true);
         Player player = event.getPlayer();
+
+        if (activeAnimations.containsKey(loc) && animationStartTimes.containsKey(loc)) {
+            long timeElapsed = System.currentTimeMillis() - animationStartTimes.get(loc);
+            if (timeElapsed > 8000) {
+                forceCleanup(null, loc);
+            }
+        }
 
         if (machineUsers.containsKey(loc) && !machineUsers.get(loc).equals(player.getUniqueId())) {
             Player user = Bukkit.getPlayer(machineUsers.get(loc));
@@ -141,7 +151,7 @@ public class SlotMachine implements Listener {
         }
 
         if (activeAnimations.containsKey(loc) && !isSpinning.getOrDefault(player.getUniqueId(), false)) {
-            player.sendMessage(ChatColor.of("#FF6B6B") + "۞ La máquina está terminando una animación.");
+            player.sendMessage(ChatColor.of("#FF6B6B") + "۞ La máquina está terminando una animación. Espera un momento.");
             return;
         }
 
@@ -160,30 +170,27 @@ public class SlotMachine implements Listener {
     }
 
     private void setupGUI(Inventory inv, Player player, Location machineLoc) {
-        // 1. Botones Principales
         ItemStack close = new ItemStack(Material.BARRIER);
         ItemMeta cm = close.getItemMeta();
         cm.setDisplayName(ChatColor.of("#FF6B6B") + "" + ChatColor.BOLD + "Cerrar");
         cm.setCustomModelData(1000);
         close.setItemMeta(cm);
-        inv.setItem(closeButton, close); // Slot 0
+        inv.setItem(closeButton, close);
 
         ItemStack spin = new ItemStack(Material.LEVER);
         ItemMeta sm = spin.getItemMeta();
         sm.setDisplayName(ChatColor.of("#B5EAD7") + "" + ChatColor.BOLD + "¡GIRAR!");
         sm.setLore(Arrays.asList(
                 "",
-                ChatColor.of("#C7CEEA") + "Coloca una " + ChatColor.of("#FFD3A5") + "Vithium Ficha",
+                ChatColor.of("#C7CEEA") + "Coloca una " + ChatColor.of("#FFD3A5") + "ManuFicha",
                 ChatColor.of("#C7CEEA") + "en el slot inferior y haz clic aquí",
                 ""
         ));
         sm.setCustomModelData(1000);
         spin.setItemMeta(sm);
-        inv.setItem(spinButton, spin); // Slot 43
+        inv.setItem(spinButton, spin);
 
-        // 2. Líneas de Premio (NUEVO)
-        // Izquierda (27, 28, 29) -> Apunta a la derecha
-        ItemStack leftLine = new ItemStack(Material.RED_STAINED_GLASS_PANE);
+        ItemStack leftLine = new ItemStack(Material.RED_DYE);
         ItemMeta leftMeta = leftLine.getItemMeta();
         leftMeta.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "»» " + ChatColor.RED + "Línea de Premio" + ChatColor.GOLD + " »»");
         leftMeta.setCustomModelData(1000);
@@ -193,8 +200,7 @@ public class SlotMachine implements Listener {
         inv.setItem(28, leftLine);
         inv.setItem(29, leftLine);
 
-        // Derecha (33, 34, 35) -> Apunta a la izquierda
-        ItemStack rightLine = new ItemStack(Material.RED_STAINED_GLASS_PANE);
+        ItemStack rightLine = new ItemStack(Material.RED_DYE);
         ItemMeta rightMeta = rightLine.getItemMeta();
         rightMeta.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "«« " + ChatColor.RED + "Línea de Premio" + ChatColor.GOLD + " ««");
         rightMeta.setCustomModelData(1000);
@@ -204,35 +210,29 @@ public class SlotMachine implements Listener {
         inv.setItem(34, rightLine);
         inv.setItem(35, rightLine);
 
-        // 3. Rellenar fondo gris (evitando lo que ya pusimos)
-        ItemStack glass = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemStack glass = new ItemStack(Material.BLACK_DYE);
         ItemMeta gm = glass.getItemMeta();
         gm.setDisplayName(" ");
         gm.setCustomModelData(1000);
         glass.setItemMeta(gm);
 
         for (int i = 0; i < 54; i++) {
-            // Si el slot está vacío, no es el tokenSlot y no es parte de los rodillos, poner gris
             if (inv.getItem(i) == null && i != tokenSlot && !isReelSlot(i)) {
                 inv.setItem(i, glass);
             }
         }
 
-        // 4. Indicadores de Ficha (Alrededor del slot 49)
-        ItemStack tokenIndicator = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemStack tokenIndicator = new ItemStack(Material.ORANGE_DYE);
         ItemMeta tokenMeta = tokenIndicator.getItemMeta();
-        tokenMeta.setDisplayName(ChatColor.of("#FFD3A5") + "" + ChatColor.BOLD + "Coloca Ficha Aquí");
+        tokenMeta.setDisplayName(ChatColor.of("#FFD3A5") + "" + ChatColor.BOLD + "Coloca ManuFicha Aquí");
         tokenMeta.setCustomModelData(1000);
         tokenIndicator.setItemMeta(tokenMeta);
 
-        int[] indicatorSlots = {40, 41, 42, 48, 50, 57, 58};
+        int[] indicatorSlots = {39, 40, 41, 48, 50};
         for (int slot : indicatorSlots) {
-            if (slot < 54 && inv.getItem(slot).getType() == Material.GRAY_STAINED_GLASS_PANE) {
-                inv.setItem(slot, tokenIndicator);
-            }
+            inv.setItem(slot, tokenIndicator);
         }
 
-        // 5. Inicializar Rodillos (O recuperar estado)
         AnimationState animState = animationStates.get(machineLoc);
         if (animState != null && activeAnimations.containsKey(machineLoc) && isSpinning.getOrDefault(player.getUniqueId(), false)) {
             updateGUIFromAnimationState(inv, animState);
@@ -244,10 +244,6 @@ public class SlotMachine implements Listener {
                     setSymbolInSlot(inv, slot, symbols[r.nextInt(symbols.length)], false);
                 }
             }
-        }
-
-        if (!activeDisplays.containsKey(machineLoc)) {
-            createItemDisplays(machineLoc);
         }
     }
 
@@ -294,9 +290,10 @@ public class SlotMachine implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent e) {
-        if (!e.getView().getTitle().equals(title)) return;
         Player p = (Player) e.getWhoClicked();
 
+        if (!p.hasMetadata("slot_machine_location")) return;
+        if (e.getView().getTopInventory().getSize() != 54) return;
         if (e.getClickedInventory() == p.getInventory()) return;
 
         if (e.getSlot() == tokenSlot) {
@@ -308,7 +305,7 @@ public class SlotMachine implements Listener {
             if (cursor != null && cursor.getType() != Material.AIR) {
                 if (!cursor.isSimilar(EconomyItems.createVithiumToken())) {
                     e.setCancelled(true);
-                    p.sendMessage(ChatColor.of("#FFB3BA") + "۞ Solo puedes colocar Vithium Fichas aquí.");
+                    p.sendMessage(ChatColor.of("#FFB3BA") + "۞ Solo puedes colocar ManuFichas aquí.");
                     return;
                 }
             }
@@ -324,13 +321,12 @@ public class SlotMachine implements Listener {
         }
     }
 
-    // --- AQUÍ ESTÁ LA LÓGICA DE PROBABILIDAD CORREGIDA ---
     private void startSpin(Player p, Inventory inv) {
         if (isSpinning.getOrDefault(p.getUniqueId(), false)) return;
 
         ItemStack bet = inv.getItem(tokenSlot);
         if (bet == null || !bet.isSimilar(EconomyItems.createVithiumToken())) {
-            p.sendMessage(ChatColor.of("#FFB3BA") + "۞ ¡Coloca una Vithium Ficha primero!");
+            p.sendMessage(ChatColor.of("#FFB3BA") + "۞ ¡Coloca una ManuFicha primero!");
             p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.8f);
             return;
         }
@@ -348,40 +344,36 @@ public class SlotMachine implements Listener {
         AnimationState state = new AnimationState();
         Random r = new Random();
 
-        // -------------------------------------------------------------
-        // NUEVA LÓGICA DE PROBABILIDAD (FORCE WIN/LOSS)
-        // -------------------------------------------------------------
         double winChance = config.getDouble("SlotMachine.win_chance", 15.0);
-        double roll = r.nextDouble() * 100; // 0.0 a 100.0
+        double roll = r.nextDouble() * 100;
         boolean shouldWin = roll <= winChance;
 
         if (shouldWin) {
-            // CASO VICTORIA: Elegir un símbolo y forzarlo en los 3 rodillos
             Material winningSymbol = symbols[r.nextInt(symbols.length)];
             state.finalResults[0] = winningSymbol;
             state.finalResults[1] = winningSymbol;
             state.finalResults[2] = winningSymbol;
         } else {
-            // CASO DERROTA: Generar aleatorio y evitar que sean 3 iguales
             do {
                 state.finalResults[0] = symbols[r.nextInt(symbols.length)];
                 state.finalResults[1] = symbols[r.nextInt(symbols.length)];
                 state.finalResults[2] = symbols[r.nextInt(symbols.length)];
             } while (state.finalResults[0] == state.finalResults[1] && state.finalResults[1] == state.finalResults[2]);
         }
-        // -------------------------------------------------------------
 
-        // Rellenar símbolos iniciales de animación (solo visual)
         for(int i=0; i<3; i++) {
             for(int j=0; j<3; j++) state.currentSymbols[i][j] = symbols[r.nextInt(symbols.length)];
         }
 
-        if (machineLoc != null) animationStates.put(machineLoc, state);
-
         if (machineLoc != null) {
+            // Asegurarnos de borrar CUALQUIER display viejo antes de empezar uno nuevo
+            cleanupDisplays(machineLoc);
+
+            animationStates.put(machineLoc, state);
+            animationStartTimes.put(machineLoc, System.currentTimeMillis());
             machineLoc.getWorld().playSound(machineLoc, Sound.BLOCK_PISTON_EXTEND, 1.0f, 1.0f);
             machineLoc.getWorld().playSound(machineLoc, Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.2f);
-            createItemDisplays(machineLoc);
+            createItemDisplays(machineLoc, p);
         }
 
         BukkitRunnable task = new BukkitRunnable() {
@@ -408,7 +400,7 @@ public class SlotMachine implements Listener {
                         }
                     }
 
-                    if (p.getOpenInventory().getTitle().equals(title)) {
+                    if (p.hasMetadata("slot_machine_location") && p.getOpenInventory().getTopInventory().getSize() == 54) {
                         updateGUIFromAnimationState(inv, state);
                     }
 
@@ -438,16 +430,13 @@ public class SlotMachine implements Listener {
     }
 
     private void finishSpin(Player p, Inventory inv, Location loc, AnimationState state) {
-        isSpinning.put(p.getUniqueId(), false);
         Material[] results = state.finalResults;
 
-        // Mostrar resultados en dorado
         for(int i=0; i<3; i++) {
             int slot = reel1Slots[2] + i;
             setSymbolInSlot(inv, slot, results[i], true);
         }
 
-        // CHECK WIN
         if (results[0] == results[1] && results[1] == results[2]) {
             giveReward(p, results[0], loc);
         } else {
@@ -462,13 +451,19 @@ public class SlotMachine implements Listener {
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    if (!isSpinning.getOrDefault(p.getUniqueId(), false)) {
-                        cleanupDisplays(loc);
-                        animationStates.remove(loc);
-                        activeAnimations.remove(loc);
+                    cleanupDisplays(loc); // Limpiar al instante
+                    animationStates.remove(loc);
+                    activeAnimations.remove(loc);
+                    animationStartTimes.remove(loc);
+                    isSpinning.put(p.getUniqueId(), false); // Liberar giro AL FINAL
+
+                    if (!p.hasMetadata("slot_machine_location")) {
+                        forceCleanup(p, loc);
                     }
                 }
-            }.runTaskLater(plugin, 100L);
+            }.runTaskLater(plugin, 40L); // Reducido a 2 segundos exactos para que la transición sea fluida
+        } else {
+            isSpinning.put(p.getUniqueId(), false);
         }
     }
 
@@ -522,20 +517,19 @@ public class SlotMachine implements Listener {
 
     @EventHandler
     public void onClose(InventoryCloseEvent e) {
-        if (!e.getView().getTitle().equals(title)) return;
         Player p = (Player) e.getPlayer();
+
+        if (!p.hasMetadata("slot_machine_location")) return;
 
         ItemStack tokens = e.getInventory().getItem(tokenSlot);
         if (tokens != null) p.getInventory().addItem(tokens);
 
-        if (p.hasMetadata("slot_machine_location")) {
-            Location loc = (Location) p.getMetadata("slot_machine_location").get(0).value();
+        Location loc = (Location) p.getMetadata("slot_machine_location").get(0).value();
 
-            if (!activeAnimations.containsKey(loc)) {
-                forceCleanup(p, loc);
-            }
+        p.removeMetadata("slot_machine_location", plugin);
 
-            p.removeMetadata("slot_machine_location", plugin);
+        if (!activeAnimations.containsKey(loc)) {
+            forceCleanup(p, loc);
         }
     }
 
@@ -565,38 +559,85 @@ public class SlotMachine implements Listener {
             if (activeAnimations.containsKey(l)) activeAnimations.get(l).cancel();
         });
         toRemove.forEach(activeAnimations::remove);
+        toRemove.forEach(animationStartTimes::remove);
     }
 
     private void forceCleanup(Player p, Location loc) {
+        if (p != null) isSpinning.remove(p.getUniqueId());
         machineUsers.remove(loc);
-        isSpinning.remove(p.getUniqueId());
         if (activeAnimations.containsKey(loc)) activeAnimations.get(loc).cancel();
         activeAnimations.remove(loc);
         animationStates.remove(loc);
+        animationStartTimes.remove(loc);
         cleanupDisplays(loc);
         manager.setGameActive(loc, false);
     }
 
-    private void createItemDisplays(Location machineLoc) {
-        if (activeDisplays.containsKey(machineLoc)) cleanupDisplays(machineLoc);
+    private void createItemDisplays(Location machineLoc, Player player) {
         if (!machineLoc.getChunk().isLoaded()) machineLoc.getChunk().load();
 
         List<ItemDisplay> displays = new ArrayList<>();
-        double[] xOffsets = {-0.7, 0.0, 0.7};
 
-        for(int i=0; i<3; i++) {
-            Location dLoc = machineLoc.clone().add(0.5 + xOffsets[i], 2.0, 0.5);
+        // Normalizamos el Yaw del jugador (0 a 360)
+        double yaw = player.getLocation().getYaw();
+        yaw = (yaw % 360 + 360) % 360;
+
+        // "Redondear" a la dirección cardinal más cercana (Norte, Sur, Este, Oeste)
+        double cardinalYaw;
+        if (yaw >= 45 && yaw < 135) {
+            cardinalYaw = 90.0;  // Oeste
+        } else if (yaw >= 135 && yaw < 225) {
+            cardinalYaw = 180.0; // Norte
+        } else if (yaw >= 225 && yaw < 315) {
+            cardinalYaw = 270.0; // Este
+        } else {
+            cardinalYaw = 0.0;   // Sur
+        }
+
+        // Usamos el Yaw redondeado para los cálculos
+        double radYaw = Math.toRadians(cardinalYaw);
+
+        // Vector horizontal (derecha/izquierda relativos a la cara del bloque)
+        double dx = Math.cos(radYaw);
+        double dz = Math.sin(radYaw);
+
+        // Vector de profundidad (empujar "adentro" del bloque)
+        double pushBack = 0.2;
+        double px = -Math.sin(radYaw) * pushBack;
+        double pz = Math.cos(radYaw) * pushBack;
+
+        // Rotación exacta fijada a los ejes
+        float displayYaw = (float) (Math.toRadians(-cardinalYaw + 180));
+        Quaternionf rotation = new Quaternionf().rotateY(displayYaw);
+
+        double spacing = 0.325;
+        double heightY = 1.525;
+        float scaleSize = 0.275f;
+
+        for(int i = 0; i < 3; i++) {
+            int multiplier = i - 1;
+
+            Location dLoc = machineLoc.clone().add(
+                    0.5 + (dx * spacing * multiplier) + px,
+                    heightY,
+                    0.5 + (dz * spacing * multiplier) + pz
+            );
+
             ItemDisplay d = machineLoc.getWorld().spawn(dLoc, ItemDisplay.class, display -> {
                 display.setItemStack(new ItemStack(symbols[0]));
-                display.setBillboard(Display.Billboard.VERTICAL);
+                display.setBillboard(Display.Billboard.FIXED); // Debe mantenerse en FIXED para respetar nuestra rotación manual
+
                 Transformation t = display.getTransformation();
-                t.getScale().set(0.5f);
+                t.getScale().set(scaleSize);
+                t.getLeftRotation().set(rotation);
                 display.setTransformation(t);
 
                 display.setPersistent(true);
                 display.setInvulnerable(true);
                 display.setGlowing(true);
                 display.setBrightness(new Display.Brightness(15, 15));
+
+                display.addScoreboardTag("slot_display");
             });
             displays.add(d);
         }
@@ -621,26 +662,24 @@ public class SlotMachine implements Listener {
             activeDisplays.get(loc).forEach(Entity::remove);
             activeDisplays.remove(loc);
         }
+
+        // LIMPIEZA ABSOLUTA MEDIANTE TAGS
+        if (loc.getWorld() != null && loc.getChunk().isLoaded()) {
+            Location searchLoc = loc.clone().add(0.5, 2.0, 0.5);
+            for (Entity e : loc.getChunk().getEntities()) {
+                if (e instanceof ItemDisplay && e.getScoreboardTags().contains("slot_display")) {
+                    if (e.getLocation().distanceSquared(searchLoc) < 4.0) {
+                        e.remove();
+                    }
+                }
+            }
+        }
     }
 
     private ItemStack createRewardItem(String name, int amount) {
-        ItemStack item = null;
-
-        switch (name.toLowerCase()) {
-            case "vithiums_fichas":
-                item = EconomyItems.createVithiumToken();
-                break;
-            case "vithiums":
-                item = EconomyItems.createVithiumCoin();
-                break;
-            case "doubletotem":
-                item = doubleLifeTotem.createDoubleLifeTotem();
-                break;
-            // Pega aquí tus items custom (DoubleTotem, etc)
-        }
+        ItemStack item = itemManager.getItem(name, amount, null);
 
         if (item != null) {
-            item.setAmount(amount);
             return item;
         }
 

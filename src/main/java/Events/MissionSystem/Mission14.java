@@ -5,16 +5,23 @@ import TitleListener.SuccessNotification;
 import items.EconomyItems;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.block.BlockDropItemEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class Mission14 implements Mission, Listener {
     private final JavaPlugin plugin;
@@ -22,55 +29,50 @@ public class Mission14 implements Mission, Listener {
     private final SuccessNotification successNotification;
     private final ActionBarHandler actionBarHandler;
 
-    // Mapas temporales (No se guardan en BD porque es un reto instantáneo)
-    private final Map<UUID, Double> startY = new HashMap<>();
-    private final Map<UUID, Long> startTime = new HashMap<>();
+    // Única llave necesaria: "Ya se usó para la misión"
+    private final NamespacedKey markKey;
+
+    private final List<Material> flowers = Arrays.asList(
+            Material.DANDELION, Material.POPPY, Material.BLUE_ORCHID,
+            Material.ALLIUM, Material.AZURE_BLUET, Material.RED_TULIP,
+            Material.ORANGE_TULIP, Material.WHITE_TULIP, Material.PINK_TULIP,
+            Material.OXEYE_DAISY, Material.CORNFLOWER, Material.LILY_OF_THE_VALLEY,
+            Material.WITHER_ROSE, Material.SUNFLOWER, Material.LILAC,
+            Material.ROSE_BUSH, Material.PEONY, Material.TORCHFLOWER,
+            Material.PITCHER_PLANT, Material.PINK_PETALS, Material.SPORE_BLOSSOM
+    );
 
     public Mission14(JavaPlugin plugin, MissionHandler missionHandler) {
         this.plugin = plugin;
         this.missionHandler = missionHandler;
         this.successNotification = new SuccessNotification(plugin);
         this.actionBarHandler = new ActionBarHandler(plugin);
+        this.markKey = new NamespacedKey(plugin, "mission14_counted");
     }
 
     @Override
-    public String getName() {
-        return "¡Sé que puedo volar!";
-    }
+    public String getName() { return "Stardew Valley"; }
 
     @Override
-    public String getDescription() {
-        return "Sube 300 bloques de altura en menos de 7 segundos.";
-    }
+    public String getDescription() { return "Encuentra y recoge 25 unidades\nde todas las flores del juego."; }
 
     @Override
-    public int getMissionNumber() {
-        return 14;
-    }
+    public int getMissionNumber() { return 14; }
 
     @Override
     public List<ItemStack> getRewards() {
         List<ItemStack> rewards = new ArrayList<>();
-
         ItemStack coins = EconomyItems.createVithiumCoin();
-        coins.setAmount(5);
-        ItemStack goldenApples = new ItemStack(Material.GOLD_INGOT, 25);
-        ItemStack diamonds = new ItemStack(Material.FIREWORK_ROCKET, 64);
-
-
-        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 3);
+        coins.setAmount(20);
+        ItemStack goldenApples = new ItemStack(Material.GOLDEN_APPLE, 25);
+        ItemStack diamonds = new ItemStack(Material.DIAMOND, 64);
+        ItemStack xpFill = new ItemStack(Material.EXPERIENCE_BOTTLE, 2);
         for (int i = 0; i < 27; i++) {
-            if (i == 11) {
-                rewards.add(goldenApples);
-            } else if (i == 13) {
-                rewards.add(coins);
-            } else if (i == 15) {
-                rewards.add(diamonds);
-            } else {
-                rewards.add(xpFill.clone());
-            }
+            if (i == 11) rewards.add(goldenApples);
+            else if (i == 13) rewards.add(coins);
+            else if (i == 15) rewards.add(diamonds);
+            else rewards.add(xpFill.clone());
         }
-
         return rewards;
     }
 
@@ -80,63 +82,125 @@ public class Mission14 implements Mission, Listener {
     @Override
     public void checkCompletion(String playerName) {}
 
+    public List<Material> getRequiredFlowers() { return flowers; }
+
+    // --- SISTEMA ANTI EXPLOIT (TRASPASO DE MARCA) ---
+
     @EventHandler
-    public void onMove(PlayerMoveEvent event) {
-        if (!missionHandler.isMissionActive(14)) return;
+    public void onBlockPlace(BlockPlaceEvent event) {
+        // 1. SOLUCIÓN: Siempre limpiamos cualquier metadata "fantasma" que haya quedado en estas coordenadas
+        if (event.getBlockPlaced().hasMetadata("mission14_marked")) {
+            event.getBlockPlaced().removeMetadata("mission14_marked", plugin);
+        }
 
-        // Optimización: Solo revisar si cambió de bloque Y
-        if (event.getFrom().getBlockY() == event.getTo().getBlockY()) return;
+        ItemStack itemInHand = event.getItemInHand();
+        Material type = itemInHand.getType();
 
-        Player player = event.getPlayer();
-        if (player.isGliding() || player.isRiptiding() || player.getLocation().getY() > 350) {
-            // Solo procesar si está volando, usando tridente o muy alto para ahorrar recursos
-            processFlight(player, event.getFrom().getY(), event.getTo().getY());
-        } else {
-            // Si camina o cae, limpiar datos
-            if (event.getTo().getY() < event.getFrom().getY()) {
-                startY.remove(player.getUniqueId());
-                startTime.remove(player.getUniqueId());
+        // 2. Incluimos las semillas en la validación (TORCHFLOWER_SEEDS, PITCHER_POD)
+        if (flowers.contains(type) || type.name().contains("SEED") || type.name().contains("PITCHER") || type.name().contains("TORCHFLOWER")) {
+            ItemMeta meta = itemInHand.getItemMeta();
+            // Si el jugador planta una flor o semilla que YA está marcada, le pasamos la marca al bloque
+            if (meta != null && meta.getPersistentDataContainer().has(markKey, PersistentDataType.BYTE)) {
+                event.getBlockPlaced().setMetadata("mission14_marked", new FixedMetadataValue(plugin, true));
             }
         }
     }
 
-    private void processFlight(Player player, double fromY, double toY) {
-        UUID id = player.getUniqueId();
-        FileConfiguration data = YamlConfiguration.loadConfiguration(missionHandler.getMissionFile());
-        if (data.getBoolean("players." + player.getName() + ".missions.14.completed", false)) return;
+    @EventHandler
+    public void onBlockDropItem(BlockDropItemEvent event) {
+        // Si el bloque roto tenía la marca de "ya estaba contado", se la devolvemos al ítem dropeado
+        if (event.getBlockState().hasMetadata("mission14_marked") || event.getBlock().hasMetadata("mission14_marked")) {
+            for (Item itemEntity : event.getItems()) {
+                ItemStack item = itemEntity.getItemStack();
+                Material type = item.getType();
 
-        // Si bajó, resetear
-        if (toY < fromY) {
-            startY.remove(id);
-            startTime.remove(id);
-            return;
+                // Marcamos también las semillas si caen de un cultivo previamente marcado
+                if (flowers.contains(type) || type.name().contains("SEED") || type.name().contains("PITCHER") || type.name().contains("TORCHFLOWER")) {
+                    ItemMeta meta = item.getItemMeta();
+                    if (meta != null) {
+                        meta.getPersistentDataContainer().set(markKey, PersistentDataType.BYTE, (byte) 1);
+                        List<String> lore = meta.hasLore() ? meta.getLore() : new ArrayList<>();
+                        if (!lore.contains(ChatColor.of("#A9A9A9") + "Flor ya recolectada para la misión")) {
+                            lore.add(ChatColor.of("#A9A9A9") + "Flor ya recolectada para la misión");
+                        }
+                        meta.setLore(lore);
+                        item.setItemMeta(meta);
+                        itemEntity.setItemStack(item);
+                    }
+                }
+            }
+            // SOLUCIÓN: Limpiamos la metadata al romper el bloque por seguridad extra
+            event.getBlock().removeMetadata("mission14_marked", plugin);
+        }
+    }
+
+    // --- RECOLECCIÓN ---
+
+    @EventHandler
+    public void onPickup(EntityPickupItemEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            checkFlower(player, event.getItem().getItemStack());
+        }
+    }
+
+    private void checkFlower(Player player, ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return;
+        Material type = item.getType();
+        if (!flowers.contains(type)) return;
+        if (!missionHandler.isMissionActive(player, 14)) return;
+
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return;
+
+        // Si ya tiene la marca de contada, ignorar
+        if (meta.getPersistentDataContainer().has(markKey, PersistentDataType.BYTE)) return;
+
+        MissionData data = missionHandler.getData(player, 14);
+        if (data.isCompleted()) return;
+
+        String key = "collected_" + type.name();
+        int currentAmount = data.getProgressInt(key);
+
+        if (currentAmount < 25) { // Límite subido a 25
+            int amountToAdd = item.getAmount();
+            int newAmount = Math.min(25, currentAmount + amountToAdd);
+            data.setProgressValue(key, newAmount);
+
+            int completedTypes = 0;
+            for (Material f : flowers) {
+                if (data.getProgressInt("collected_" + f.name()) >= 25) {
+                    completedTypes++;
+                }
+            }
+
+            missionHandler.saveData(player, 14, data);
+
+            if (completedTypes >= flowers.size()) {
+                successNotification.showSuccess(player);
+                missionHandler.completeMission(player, 14);
+            } else {
+                String flowerName = type.name().toLowerCase().replace('_', ' ');
+                flowerName = flowerName.substring(0, 1).toUpperCase() + flowerName.substring(1);
+
+                String amountColor = (newAmount >= 25 ? ChatColor.GREEN.toString() : ChatColor.of("#FFA07A").toString());
+
+                String msg = ChatColor.GOLD + "۞ " +
+                        ChatColor.of("#FFCC99") + "Flor: " + ChatColor.GREEN + flowerName + " " +
+                        amountColor + newAmount + ChatColor.of("#FFE4B5") + "/25" +
+                        ChatColor.GRAY + " (" + completedTypes + "/" + flowers.size() + " Tipos)";
+
+                actionBarHandler.sendActionBar(player, msg);
+                player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.5f);
+            }
         }
 
-        // Iniciar rastreo
-        if (!startY.containsKey(id)) {
-            startY.put(id, fromY);
-            startTime.put(id, System.currentTimeMillis());
-            return;
+        // Marcamos la flor como ya usada sin importar si completó la misión o no
+        meta.getPersistentDataContainer().set(markKey, PersistentDataType.BYTE, (byte) 1);
+        List<String> lore = meta.hasLore() ? meta.getLore() : new ArrayList<>();
+        if (!lore.contains(ChatColor.of("#A9A9A9") + "Flor ya recolectada para la misión")) {
+            lore.add(ChatColor.of("#A9A9A9") + "Flor ya recolectada para la misión");
         }
-
-        long timeElapsed = System.currentTimeMillis() - startTime.get(id);
-
-        // Si pasaron más de 7 segundos, reiniciar punto de partida al actual
-        if (timeElapsed > 7000) {
-            startY.put(id, fromY); // Reiniciar desde aquí
-            startTime.put(id, System.currentTimeMillis());
-            return;
-        }
-
-        double heightGained = toY - startY.get(id);
-
-        if (heightGained >= 300) {
-            successNotification.showSuccess(player);
-            String msg = ChatColor.GOLD + "۞ " + ChatColor.of("#FFCC99") + "¡Velocidad supersónica alcanzada!";
-            actionBarHandler.sendActionBar(player, msg);
-            missionHandler.completeMission(player.getName(), 14);
-            startY.remove(id);
-            startTime.remove(id);
-        }
+        meta.setLore(lore);
+        item.setItemMeta(meta);
     }
 }

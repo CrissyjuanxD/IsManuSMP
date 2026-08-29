@@ -1,8 +1,7 @@
 package Commands;
 
-import Bosses.QueenBeeHandler;
-import Dificultades.CustomMobs.*;
-import Handlers.DayHandler;
+import Managers.MobManager;
+import imp.crissyjuanxd.IsManuSMP;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -11,63 +10,43 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class SpawnMobs implements CommandExecutor, TabCompleter {
-    private final JavaPlugin plugin;
-    private final Bombita bombitaSpawner;
-    private final Iceologer iceologerSpawner;
-    private final CorruptedZombies corruptedZombieSpawner;
-    private final CorruptedSpider corruptedSpider;
-    private final GuardianBlaze guardianBlaze;
-    private final GuardianCorruptedSkeleton guardianCorruptedSkeleton;
-    private final CorruptedInfernalSpider corruptedInfernalSpider;
-    private final CustomBoat customBoat;
-    private final InfestedBeeHandler infestedBeeHandler;
-    private final EspectralGhast espectralGhast;
-    private final EspectralCreeper espectralCreeper;
-    private final CorruptedBee corruptedBee;
-    private final DayHandler dayHandler;
 
-    public SpawnMobs(JavaPlugin plugin, DayHandler dayHandler) {
+    private final IsManuSMP plugin;
+    private final MobManager mobManager;
+
+    public SpawnMobs(IsManuSMP plugin, MobManager mobManager) {
         this.plugin = plugin;
-        this.bombitaSpawner = new Bombita(plugin);
-        this.iceologerSpawner = new Iceologer(plugin);
-        this.corruptedZombieSpawner = new CorruptedZombies(plugin);
-        this.corruptedSpider = new CorruptedSpider(plugin, dayHandler);
-        this.guardianBlaze = new GuardianBlaze(plugin);
-        this.guardianCorruptedSkeleton = new GuardianCorruptedSkeleton(plugin);
-        this.dayHandler = dayHandler;
-        this.corruptedInfernalSpider = new CorruptedInfernalSpider(plugin);
-        this.customBoat = new CustomBoat(plugin);
-        this.infestedBeeHandler = new InfestedBeeHandler(plugin);
-        this.espectralGhast = new EspectralGhast(plugin);
-        this.espectralCreeper = new EspectralCreeper(plugin);
-        this.corruptedBee = new CorruptedBee(plugin);
-        plugin.getCommand("spawnvct").setExecutor(this);
-        plugin.getCommand("spawnvct").setTabCompleter(this);
+        this.mobManager = mobManager;
+        plugin.getCommand("spawnismanu").setExecutor(this);
+        plugin.getCommand("spawnismanu").setTabCompleter(this);
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length < 1) {
-            sender.sendMessage("Uso: /spawnvct <mob> [jugador (opcional)] [x] [y] [z]");
+            sender.sendMessage("Uso: /spawnismanu <mob> [jugador (opcional)] [x] [y] [z]");
             return true;
         }
 
         String mobType = args[0].toLowerCase();
-
         Location location = null;
         Player targetPlayer = null;
+        String variantArg = null; // Preparado en caso de usar variantes como en Viciont
 
         if (args.length > 1 && Bukkit.getPlayer(args[1]) != null) {
             targetPlayer = Bukkit.getPlayer(args[1]);
             location = targetPlayer.getLocation();
-        } else if (args.length >= 4) {
+        } else if (args.length > 1) {
+            variantArg = args[1];
+        }
+
+        if (args.length >= 4) {
             try {
                 World world = sender instanceof Player ? ((Player) sender).getWorld() : Bukkit.getWorlds().get(0);
                 double x = Double.parseDouble(args[args.length - 3]);
@@ -78,88 +57,22 @@ public class SpawnMobs implements CommandExecutor, TabCompleter {
                 sender.sendMessage("Las coordenadas deben ser números válidos.");
                 return true;
             }
-        } else if (sender instanceof Player) {
+        }
+
+        if (location == null && sender instanceof Player) {
             targetPlayer = (Player) sender;
             location = targetPlayer.getLocation();
-        } else {
+        } else if (location == null) {
             sender.sendMessage("Debes especificar un jugador o coordenadas si no eres un jugador.");
             return true;
         }
 
-        switch (mobType) {
-            case "bombita":
-                bombitaSpawner.spawnBombita(location);
-                sender.sendMessage("¡Bombita ha sido spawneado en " + locationToString(location) + "!");
-                break;
+        boolean success = mobManager.spawnMob(mobType, location, targetPlayer, variantArg);
 
-            case "iceologer":
-                iceologerSpawner.spawnIceologer(location);
-                sender.sendMessage("¡Iceologer ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "corruptedzombie":
-                corruptedZombieSpawner.spawnCorruptedZombie(location);
-                sender.sendMessage("¡Corrupted Zombie ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "corruptedspider":
-                corruptedSpider.spawnCorruptedSpider(location);
-                sender.sendMessage("¡Corrupted Spider ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "queenbee":
-                QueenBeeHandler.spawn(plugin, location);
-                sender.sendMessage("§d¡Corrupted Queen Bee ha sido invocada en " + locationToString(location) + "!");
-                break;
-
-            case "guardianblaze":
-                guardianBlaze.spawnGuardianBlaze(location);
-                sender.sendMessage("¡Guardian Blaze ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "guardiancorruptedskeleton":
-                guardianCorruptedSkeleton.spawnGuardianCorruptedSkeleton(location);
-                sender.sendMessage("¡Guardian Corrupted Skeleton ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "corruptedinfernalspider":
-                corruptedInfernalSpider.spawnCorruptedInfernalSpider(location);
-                sender.sendMessage("¡Corrupted Infernal Spider ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "customboat":
-                customBoat.spawnBoat(location, Objects.requireNonNull(targetPlayer));
-                sender.sendMessage("¡Custom Boat ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "infestedbee":
-                infestedBeeHandler.spawnInfestedBee(location);
-                sender.sendMessage("¡Infested Bee ha sido spawneada en " + locationToString(location) + "!");
-                break;
-
-            case "enderghast":
-                espectralGhast.spawnEnderGhast(location);
-                sender.sendMessage("¡Ender Ghast ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "endercreeper":
-                espectralCreeper.spawnEnderCreeper(location);
-                sender.sendMessage("¡Ender Creeper ha sido spawneado en " + locationToString(location) + "!");
-                break;
-
-            case "foxstatue":
-                Fox_Statue.spawn(location);
-                sender.sendMessage("¡Estatua de Zorro ha sido spawneada en " + locationToString(location) + "!");
-                break;
-
-            case "corruptedbee":
-                corruptedBee.spawnCorruptedBee(location);
-                sender.sendMessage("¡Corrupted Bee ha sido spawneada en " + locationToString(location) + "!");
-                break;
-
-            default:
-                sender.sendMessage("Mob no reconocido. Usa /spawnvct <bombita|iceologer|corruptedzombie|corruptedspider|queenbee>");
-                break;
+        if (success) {
+            sender.sendMessage("§a¡" + mobType + " ha sido spawneado en " + locationToString(location) + "!");
+        } else {
+            sender.sendMessage("§cMob no reconocido. Usa el tabulador para ver las opciones.");
         }
 
         return true;
@@ -174,20 +87,9 @@ public class SpawnMobs implements CommandExecutor, TabCompleter {
         List<String> suggestions = new ArrayList<>();
 
         if (args.length == 1) {
-            suggestions.add("bombita");
-            suggestions.add("iceologer");
-            suggestions.add("corruptedzombie");
-            suggestions.add("corruptedspider");
-            suggestions.add("queenbee");
-            suggestions.add("guardianblaze");
-            suggestions.add("guardiancorruptedskeleton");
-            suggestions.add("corruptedinfernalspider");
-            suggestions.add("customboat");
-            suggestions.add("infestedbee");
-            suggestions.add("enderghast");
-            suggestions.add("endercreeper");
-            suggestions.add("foxstatue");
-            suggestions.add("corruptedbee");
+            return mobManager.getRegisteredMobs().stream()
+                    .filter(name -> name.toLowerCase().startsWith(args[0].toLowerCase()))
+                    .collect(Collectors.toList());
         } else if (args.length == 2) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 suggestions.add(player.getName());
@@ -201,6 +103,8 @@ public class SpawnMobs implements CommandExecutor, TabCompleter {
             }
         }
 
-        return suggestions;
+        return suggestions.stream()
+                .filter(s -> s.toLowerCase().startsWith(args[args.length - 1].toLowerCase()))
+                .collect(Collectors.toList());
     }
 }

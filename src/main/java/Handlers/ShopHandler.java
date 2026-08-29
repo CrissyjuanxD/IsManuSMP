@@ -1,3 +1,4 @@
+/*
 //CODIGO ANTIGUO
 
 package Handlers;
@@ -855,7 +856,9 @@ public class ShopHandler implements Listener {
 
             if (config.contains(basePath)) {
                 ItemStack result = config.getItemStack(basePath + ".result");
-                /*int maxUses = config.getInt(basePath + ".maxUses", 999);*/
+                */
+/*int maxUses = config.getInt(basePath + ".maxUses", 999);*//*
+
                 int maxUses = Integer.MAX_VALUE;
 
                 if (result != null) {
@@ -888,11 +891,13 @@ public class ShopHandler implements Listener {
 
     //Cambio en lo estricto de tradeos en mochilas
 
-    /**
+    */
+/**
      * Actualiza las recetas del aldeano en tiempo real basándose en el inventario del jugador.
      * Si la tienda pide una "Mochila Nvl 1" limpia, pero el jugador tiene una "Mochila Nivel 1"
      * con ID y Lore, la tienda cambiará su requisito para aceptar la del jugador.
-     */
+     *//*
+
     private void updateTradesForPlayer(Villager villager, Player player) {
         List<MerchantRecipe> currentRecipes = new ArrayList<>(villager.getRecipes());
         boolean needsUpdate = false;
@@ -1044,4 +1049,4 @@ public class ShopHandler implements Listener {
             }
         }
     }
-}
+}*/

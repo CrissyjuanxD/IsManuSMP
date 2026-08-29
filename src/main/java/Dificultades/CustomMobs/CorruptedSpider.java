@@ -2,16 +2,17 @@ package Dificultades.CustomMobs;
 
 import Dificultades.Features.MobSoundManager;
 import Handlers.DayHandler;
-import items.CorruptedMobItems;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
-import org.bukkit.entity.*;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.Spider;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -102,10 +103,6 @@ public class CorruptedSpider implements Listener {
     public void onCorruptedSpiderDeath(EntityDeathEvent event) {
         if (event.getEntity() instanceof Spider spider && isCorruptedSpider(spider)) {
             spider.getWorld().playSound(spider.getLocation(), Sound.ENTITY_SPIDER_DEATH, SoundCategory.HOSTILE, 1.0f, 0.6f);
-
-            if (Math.random() <= 0.35) {
-                spider.getWorld().dropItemNaturally(spider.getLocation(), CorruptedMobItems.createCorruptedSpiderEye());
-            }
         }
     }
 
